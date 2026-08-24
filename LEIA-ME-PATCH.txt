@@ -1,0 +1,23 @@
+PATCH VISUAL — CENTRAL DE MÍDIA
+
+Este patch NÃO mexe no Worker, R2, Supabase, login, senhas ou uploads.
+Ele altera somente a interface.
+
+SUBSTITUA no seu projeto atual:
+1. index.html
+2. styles.css
+3. icons.js
+
+E ADICIONE:
+4. assets/brand-mark.png
+
+Não substitua app.js, config.js, worker/, wrangler.toml ou qualquer arquivo do backend.
+
+Mudanças:
+- Logo da igreja recortada e limpa, sem aquele quadrado branco enorme.
+- Nome ASSEMBLEIA DE DEUS visível no cabeçalho.
+- MINISTÉRIO PRAIA DOS CAÇÕES visível no cabeçalho e login.
+- Cabeçalho responsivo para celular.
+- Ícone da Central redesenhado.
+- Ícone de "Enviar vídeos" redesenhado como filme + upload.
+- Campo de login agora mostra somente "Usuário".

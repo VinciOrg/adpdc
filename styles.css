@@ -702,3 +702,170 @@ button { cursor: pointer; }
   .queue-state { font-size: 11px; }
   .queue-cancel { width: 28px; height: 28px; }
 }
+
+/* ============================================================
+   PATCH UI 2026-08-24 — BRANDING + UPLOAD ICON
+   Somente visual. Não altera login, Worker, R2 ou banco.
+============================================================ */
+
+/* Identidade da igreja em lockup real, sem depender do texto minúsculo da imagem original */
+.church-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.church-mark-wrap {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+.church-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(38, 43, 62, .08));
+}
+.church-name {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+}
+.church-name strong,
+.church-name span {
+  display: block;
+  white-space: nowrap;
+}
+.church-name strong {
+  color: #111827;
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: .015em;
+}
+.church-name span {
+  color: #535d70;
+  letter-spacing: .055em;
+  font-weight: 700;
+}
+
+/* Login */
+.login-brand {
+  grid-template-columns: minmax(270px, .95fr) minmax(0, 1.15fr);
+  gap: 38px;
+}
+.login-brand > img { display: none; }
+.church-brand-login {
+  gap: 18px;
+  padding: 10px 14px 10px 4px;
+}
+.church-brand-login .church-mark-wrap {
+  width: 112px;
+  height: 112px;
+}
+.church-brand-login .church-name { gap: 5px; }
+.church-brand-login .church-name strong { font-size: 22px; }
+.church-brand-login .church-name span { font-size: 10px; }
+.login-brand-copy { min-width: 0; }
+
+/* Header */
+.topbar-brand > img { display: none; }
+.church-brand-topbar { gap: 12px; flex: 0 0 auto; }
+.church-brand-topbar .church-mark-wrap {
+  width: 68px;
+  height: 68px;
+}
+.church-brand-topbar .church-name { gap: 3px; }
+.church-brand-topbar .church-name strong { font-size: 18px; }
+.church-brand-topbar .church-name span { font-size: 8.5px; }
+
+/* Ícone da Central */
+.app-icon {
+  border-radius: 15px;
+  background: linear-gradient(145deg, #ff4f18 0%, #ff8b00 56%, #ffbd16 100%);
+  box-shadow: 0 9px 22px rgba(255, 102, 0, .24), inset 0 0 0 1px rgba(255,255,255,.22);
+}
+.app-icon .ui-icon { stroke-width: 1.75; }
+
+/* Upload: troca o círculo genérico por um badge próprio de vídeo + upload */
+.upload-symbol {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 21px;
+  color: #fff;
+  background: linear-gradient(145deg, #ff5018 0%, #ff8c00 55%, #ffbd16 100%);
+  box-shadow:
+    0 13px 28px rgba(255, 105, 0, .23),
+    inset 0 0 0 1px rgba(255,255,255,.28);
+  transform: rotate(-1.5deg);
+}
+.upload-symbol::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 27px;
+  border: 1px solid rgba(255, 139, 0, .16);
+  pointer-events: none;
+}
+.upload-symbol .ui-icon {
+  position: relative;
+  z-index: 1;
+  stroke-width: 1.8;
+  transform: rotate(1.5deg);
+}
+.upload-zone:hover .upload-symbol {
+  transform: translateY(-2px) rotate(-1.5deg);
+  box-shadow:
+    0 16px 32px rgba(255, 105, 0, .28),
+    inset 0 0 0 1px rgba(255,255,255,.30);
+}
+
+/* Mantém a marca legível no celular */
+@media (max-width: 1180px) {
+  .church-brand-topbar .church-mark-wrap { width: 58px; height: 58px; }
+  .church-brand-topbar .church-name strong { font-size: 15px; }
+  .church-brand-topbar .church-name span { font-size: 7.5px; }
+}
+
+@media (max-width: 860px) {
+  .login-brand { grid-template-columns: 1fr; gap: 18px; }
+  .church-brand-login {
+    justify-content: center;
+    padding: 0 0 8px;
+    text-align: left;
+  }
+  .church-brand-login .church-mark-wrap { width: 92px; height: 92px; }
+  .church-brand-login .church-name strong { font-size: 19px; }
+  .church-brand-login .church-name span { font-size: 8.5px; }
+
+  .topbar { height: 82px; }
+  .church-brand-topbar { gap: 8px; }
+  .church-brand-topbar .church-mark-wrap { width: 52px; height: 52px; }
+  .church-brand-topbar .church-name strong { font-size: 12.5px; }
+  .church-brand-topbar .church-name span { font-size: 6.8px; letter-spacing: .035em; }
+  .brand-divider { height: 40px; margin: 0 10px; }
+
+  .upload-symbol {
+    width: 58px;
+    height: 58px;
+    border-radius: 17px;
+  }
+  .upload-symbol::before { inset: -5px; border-radius: 21px; }
+}
+
+@media (max-width: 560px) {
+  .topbar { padding-inline: 10px; }
+  .church-brand-topbar .church-mark-wrap { width: 48px; height: 48px; }
+  .church-brand-topbar .church-name strong { font-size: 11px; }
+  .church-brand-topbar .church-name span { font-size: 6.2px; }
+  .brand-divider { margin: 0 7px; }
+  .app-title-wrap h1 { font-size: 13px; }
+}
+
+@media (max-width: 430px) {
+  /* Em telas bem estreitas, prioriza a identidade completa da igreja */
+  .app-title-wrap { display: none; }
+  .brand-divider { display: none; }
+  .church-brand-topbar .church-mark-wrap { width: 50px; height: 50px; }
+  .church-brand-topbar .church-name strong { font-size: 12px; }
+  .church-brand-topbar .church-name span { font-size: 6.6px; }
+}

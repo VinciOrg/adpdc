@@ -22,8 +22,16 @@
   <main id="loginView" class="login-view">
     <section class="login-card">
       <div class="login-brand">
-        <img src="assets/logo-igreja.jpg" alt="Logo Assembleia de Deus Ministério Praia dos Cações" />
-        <div>
+        <div class="church-brand church-brand-login" aria-label="Assembleia de Deus Ministério Praia dos Cações">
+          <div class="church-mark-wrap">
+            <img class="church-mark" src="assets/brand-mark.png" alt="Símbolo da Assembleia de Deus" />
+          </div>
+          <div class="church-name">
+            <strong>ASSEMBLEIA DE DEUS</strong>
+            <span>MINISTÉRIO PRAIA DOS CAÇÕES</span>
+          </div>
+        </div>
+        <div class="login-brand-copy">
           <p class="eyebrow">EQUIPE DE MÍDIA</p>
           <h1>Central de Mídia</h1>
           <p>Envie e receba vídeos sem compressão, direto do celular.</p>
@@ -32,7 +40,7 @@
 
       <form id="loginForm" class="login-form" autocomplete="on">
         <label>
-          <span>Usuário ou e-mail</span>
+          <span>Usuário</span>
           <input id="loginUser" type="text" autocomplete="username" inputmode="text" autocapitalize="none" spellcheck="false" placeholder="Ex.: lider" required />
         </label>
 
@@ -63,10 +71,18 @@
   <div id="appView" class="app-view hidden">
     <header class="topbar">
       <div class="topbar-brand">
-        <img src="assets/logo-igreja.jpg" alt="Logo da igreja" />
+        <div class="church-brand church-brand-topbar" aria-label="Assembleia de Deus Ministério Praia dos Cações">
+          <div class="church-mark-wrap">
+            <img class="church-mark" src="assets/brand-mark.png" alt="Símbolo da Assembleia de Deus" />
+          </div>
+          <div class="church-name">
+            <strong>ASSEMBLEIA DE DEUS</strong>
+            <span>MINISTÉRIO PRAIA DOS CAÇÕES</span>
+          </div>
+        </div>
         <span class="brand-divider" aria-hidden="true"></span>
         <div class="app-title-wrap">
-          <div class="app-icon"><span data-icon="video" data-icon-size="22"></span></div>
+          <div class="app-icon"><span data-icon="media" data-icon-size="22"></span></div>
           <div>
             <h1>Central de Mídia</h1>
             <p>Vídeos brutos em qualidade original</p>
@@ -142,7 +158,7 @@
         <section id="uploadCard" class="upload-card">
           <input id="fileInput" type="file" accept="video/*,.mov,.mp4,.m4v,.avi,.webm" multiple hidden />
           <div class="upload-zone" id="dropZone">
-            <div class="upload-symbol"><span data-icon="upload" data-icon-size="28"></span></div>
+            <div class="upload-symbol"><span data-icon="filmUpload" data-icon-size="31"></span></div>
             <div class="upload-copy">
               <h2>Enviar vídeos</h2>
               <p>No celular, toque no botão e escolha os vídeos da galeria.</p>
