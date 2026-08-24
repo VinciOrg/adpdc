@@ -1,12 +1,14 @@
 name = "ad-central-midia-api"
 main = "src/index.js"
 compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 preview_urls = false
 
 [vars]
 SUPABASE_URL = "https://nmprsfrpncquxmutisas.supabase.co"
 ALLOWED_ORIGINS = "*"
+VAPID_SUBJECT = "https://ad-central-midia-api.adpdc.workers.dev"
 
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
