@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#fffaf5" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="description" content="Central privada para envio e recebimento de vídeos originais da equipe de mídia." />
+  <meta name="description" content="Central privada para envio e recebimento de fotos e vídeos originais da equipe de mídia." />
 
   <title>Central de Mídia | AD Praia dos Cações</title>
 
@@ -34,7 +34,7 @@
         <div class="login-brand-copy">
           <p class="eyebrow">EQUIPE DE MÍDIA</p>
           <h1>Central de Mídia</h1>
-          <p>Envie e receba vídeos sem compressão, direto do celular.</p>
+          <p>Envie e receba fotos e vídeos sem compressão, direto do celular.</p>
         </div>
       </div>
 
@@ -85,7 +85,7 @@
           <div class="app-icon"><span data-icon="media" data-icon-size="22"></span></div>
           <div>
             <h1>Central de Mídia</h1>
-            <p>Vídeos brutos em qualidade original</p>
+            <p>Fotos e vídeos em qualidade original</p>
           </div>
         </div>
       </div>
@@ -156,16 +156,16 @@
         </section>
 
         <section id="uploadCard" class="upload-card">
-          <input id="fileInput" type="file" accept="video/*,.mov,.mp4,.m4v,.avi,.webm" multiple hidden />
+          <input id="fileInput" type="file" accept="video/*,image/*,.mov,.mp4,.m4v,.avi,.webm,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple hidden />
           <div class="upload-zone" id="dropZone">
-            <div class="upload-symbol"><span data-icon="filmUpload" data-icon-size="31"></span></div>
+            <div class="upload-symbol"><span data-icon="mediaUpload" data-icon-size="31"></span></div>
             <div class="upload-copy">
-              <h2>Enviar vídeos</h2>
-              <p>No celular, toque no botão e escolha os vídeos da galeria.</p>
+              <h2>Enviar fotos e vídeos</h2>
+              <p>Escolha os arquivos, confira a capa, dê um título e marque a categoria antes de enviar.</p>
               <div class="upload-assurances">
                 <span><i data-icon="check" data-icon-size="13"></i>Sem compressão</span>
                 <span><i data-icon="check" data-icon-size="13"></i>Qualidade total</span>
-                <span><i data-icon="check" data-icon-size="13"></i>R2 multipart retomável</span>
+                <span><i data-icon="check" data-icon-size="13"></i>Fotos + vídeos originais</span>
               </div>
             </div>
             <button id="selectFilesButton" class="primary-button" type="button">Selecionar arquivos</button>
@@ -189,15 +189,25 @@
               <span class="section-icon" data-icon="folder" data-icon-size="21"></span>
               <div>
                 <h2>Arquivos recebidos</h2>
-                <p>Disponíveis para a equipe assim que o envio ao R2 termina.</p>
+                <p>Veja a capa, o título e a categoria antes de baixar o original.</p>
               </div>
             </div>
             <button id="refreshButton" class="secondary-button" type="button"><span data-icon="refresh" data-icon-size="16"></span>Atualizar</button>
           </div>
 
+          <div id="fileFilters" class="file-filters" aria-label="Filtros dos arquivos">
+            <button class="file-filter active" type="button" data-file-filter="all">Todos</button>
+            <button class="file-filter" type="button" data-file-filter="photo"><span data-icon="image" data-icon-size="14"></span>Fotos</button>
+            <button class="file-filter" type="button" data-file-filter="video"><span data-icon="video" data-icon-size="14"></span>Vídeos</button>
+            <button class="file-filter" type="button" data-file-filter="louvor">Louvor</button>
+            <button class="file-filter" type="button" data-file-filter="pregacao">Pregação</button>
+            <button class="file-filter" type="button" data-file-filter="publico">Público</button>
+            <button class="file-filter" type="button" data-file-filter="igreja">Igreja</button>
+          </div>
+
           <div id="filesEmpty" class="empty-state hidden">
             <div class="empty-icon"><span data-icon="files" data-icon-size="34"></span></div>
-            <h3>Nenhum vídeo enviado ainda</h3>
+            <h3>Nenhuma foto ou vídeo enviado ainda</h3>
             <p>O primeiro arquivo do culto aparecerá aqui.</p>
           </div>
 
@@ -237,7 +247,7 @@
           <div>
             <p>Download sempre em</p>
             <h3>qualidade original</h3>
-            <span>Sem compressão ou conversão do vídeo.</span>
+            <span>Sem compressão ou conversão do arquivo original.</span>
           </div>
         </section>
       </aside>
@@ -249,6 +259,27 @@
       <button class="mobile-nav-item" data-scroll="files" type="button"><span data-icon="folder" data-icon-size="21"></span><small>Arquivos</small></button>
     </nav>
   </div>
+
+  <!-- PREPARAR ENVIO -->
+  <dialog id="prepareDialog" class="prepare-dialog">
+    <div class="prepare-dialog-head">
+      <div>
+        <p class="eyebrow warm">ANTES DE ENVIAR</p>
+        <h2>Organizar arquivos</h2>
+        <p id="prepareCount">0 arquivos selecionados</p>
+      </div>
+      <button id="prepareCancelButton" class="icon-button big" type="button" aria-label="Cancelar"><span data-icon="close" data-icon-size="23"></span></button>
+    </div>
+    <div class="prepare-help">
+      <span data-icon="sparkles" data-icon-size="17"></span>
+      <p>A capa é gerada no próprio celular. O arquivo original continua intacto e sem compressão.</p>
+    </div>
+    <div id="prepareList" class="prepare-list"></div>
+    <div class="prepare-dialog-actions">
+      <button class="secondary-button" id="prepareCancelBottom" type="button" onclick="document.getElementById('prepareCancelButton').click()">Cancelar</button>
+      <button class="primary-button" id="prepareSendButton" type="button">Enviar arquivos</button>
+    </div>
+  </dialog>
 
   <!-- MODAL DETALHES -->
   <dialog id="detailsDialog" class="details-dialog">

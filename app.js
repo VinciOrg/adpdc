@@ -15,6 +15,8 @@
   let activeDialogFile = null;
   let queue = [];
   let queueRunning = false;
+  let preparedItems = [];
+  let activeFileFilter = "all";
 
   const els = {};
   document.addEventListener("DOMContentLoaded", init);
@@ -58,7 +60,8 @@
       "fileInput","dropZone","selectFilesButton","mobileUploadButton","queueSection","queueSummary","uploadQueue",
       "clearFinishedButton","refreshButton","filesEmpty","filesTableBody","mobileFilesList","filesFooter",
       "activityList","previousServices","detailsDialog","detailsName","detailsBody","dialogDownloadButton",
-      "closeDialogButton","toastContainer"
+      "closeDialogButton","toastContainer","prepareDialog","prepareList","prepareCount","prepareSendButton",
+      "prepareCancelButton","fileFilters"
     ].forEach((id) => els[id] = document.getElementById(id));
   }
 
@@ -100,6 +103,18 @@
     els.refreshButton.addEventListener("click", () => loadDashboard(true));
     els.closeDialogButton.addEventListener("click", () => els.detailsDialog.close());
     els.dialogDownloadButton.addEventListener("click", () => activeDialogFile && downloadFile(activeDialogFile));
+    els.prepareCancelButton?.addEventListener("click", closePreparation);
+    els.prepareSendButton?.addEventListener("click", confirmPreparedFiles);
+    els.prepareDialog?.addEventListener("close", () => {
+      if (els.prepareDialog.returnValue !== "send") cleanupPreparedPreviewUrls();
+    });
+    els.fileFilters?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-file-filter]");
+      if (!button) return;
+      activeFileFilter = button.dataset.fileFilter || "all";
+      els.fileFilters.querySelectorAll("[data-file-filter]").forEach((b) => b.classList.toggle("active", b === button));
+      renderDashboard();
+    });
 
     document.querySelectorAll("[data-scroll]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -255,71 +270,89 @@
   }
 
   function renderFiles(serviceFiles) {
+    const visible = serviceFiles.filter(matchesActiveFilter);
     els.filesTableBody.innerHTML = "";
     els.mobileFilesList.innerHTML = "";
     els.filesEmpty.classList.toggle("hidden", serviceFiles.length > 0);
 
-    serviceFiles.forEach((file, index) => {
+    if (!visible.length && serviceFiles.length > 0) {
+      els.mobileFilesList.innerHTML = `
+        <div class="filtered-empty">
+          ${icon("filter", 28)}
+          <strong>Nenhum arquivo neste filtro</strong>
+          <span>Tente escolher “Todos”.</span>
+        </div>`;
+    }
+
+    visible.forEach((file, index) => {
       const isNew = index < 2 && (Date.now() - new Date(file.created_at).getTime()) < 10 * 60 * 1000;
       const canDelete = currentProfile?.role === "leader" || file.uploader_id === currentUser?.id;
+      const kind = file.media_kind === "photo" ? "photo" : "video";
+      const title = file.title?.trim() || baseName(file.original_name);
+      const category = categoryLabel(file.category);
 
+      // Mantemos a tabela preenchida por compatibilidade, mas a interface principal agora é a galeria visual.
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>
-          <div class="file-main">
-            <span class="file-type-icon">${icon("video", 18)}</span>
-            <div class="file-name-wrap">
-              <span class="file-name" title="${escapeAttr(file.original_name)}">${escapeHtml(file.original_name)}</span>
-              ${isNew ? '<span class="new-badge">NOVO</span>' : ""}
-            </div>
-          </div>
-        </td>
+        <td><div class="file-main"><span class="file-type-icon">${icon(kind === "photo" ? "image" : "video", 18)}</span><div class="file-name-wrap"><span class="file-name">${escapeHtml(title)}</span>${isNew ? '<span class="new-badge">NOVO</span>' : ""}</div></div></td>
         <td>${escapeHtml(file.uploader_name || "Membro")}</td>
         <td>${formatTime(new Date(file.created_at))}</td>
         <td>${formatBytes(file.size_bytes)}</td>
-        <td>
-          <div class="file-actions">
-            <button class="action-button" data-action="download">${icon("download", 15)}<span>Baixar</span></button>
-            <button class="action-button neutral" data-action="details">${icon("info", 15)}<span>Detalhes</span></button>
-            ${canDelete ? `<button class="action-button danger icon-only" data-action="delete" aria-label="Excluir">${icon("trash", 15)}</button>` : ""}
-          </div>
-        </td>`;
+        <td><div class="file-actions"><button class="action-button" data-action="download">${icon("download",15)}<span>Baixar</span></button><button class="action-button neutral" data-action="details">${icon("info",15)}<span>Detalhes</span></button>${canDelete ? `<button class="action-button danger icon-only" data-action="delete" aria-label="Excluir">${icon("trash",15)}</button>` : ""}</div></td>`;
       tr.querySelector('[data-action="download"]').addEventListener("click", () => downloadFile(file));
       tr.querySelector('[data-action="details"]').addEventListener("click", () => openDetails(file));
       tr.querySelector('[data-action="delete"]')?.addEventListener("click", () => deleteFile(file));
       els.filesTableBody.appendChild(tr);
 
       const card = document.createElement("article");
-      card.className = "mobile-file-card";
+      card.className = "media-gallery-card";
       card.innerHTML = `
-        <div class="mobile-file-top">
-          <span class="file-type-icon">${icon("video", 18)}</span>
-          <div class="mobile-file-copy">
-            <strong>${escapeHtml(file.original_name)} ${isNew ? '<span class="new-badge">NOVO</span>' : ""}</strong>
-            <span>por ${escapeHtml(file.uploader_name || "Membro")}</span>
+        <button class="media-preview" data-action="details" type="button" aria-label="Ver detalhes de ${escapeAttr(title)}">
+          ${file.thumbnail_url
+            ? `<img src="${escapeAttr(file.thumbnail_url)}" alt="Capa de ${escapeAttr(title)}" loading="lazy" />`
+            : `<span class="media-preview-fallback">${icon(kind === "photo" ? "image" : "video", 38)}</span>`}
+          <span class="media-kind-badge">${kind === "photo" ? `${icon("image",12)} Foto` : `${icon("video",12)} Vídeo`}</span>
+          ${isNew ? '<span class="gallery-new-badge">NOVO</span>' : ""}
+          ${kind === "video" ? `<span class="preview-play">${icon("play",18)}</span>` : ""}
+        </button>
+        <div class="media-card-body">
+          <div class="media-card-title-row">
+            <div>
+              <strong class="media-card-title" title="${escapeAttr(title)}">${escapeHtml(title)}</strong>
+              <span class="category-badge category-${escapeAttr(file.category || "outro")}">${escapeHtml(category)}</span>
+            </div>
           </div>
-        </div>
-        <div class="mobile-file-meta">
-          <span>${icon("clock", 13)}${formatTime(new Date(file.created_at))}</span>
-          <span>${icon("files", 13)}${formatBytes(file.size_bytes)}</span>
-        </div>
-        <div class="mobile-file-actions">
-          <button class="action-button" data-action="download">${icon("download", 15)}<span>Baixar</span></button>
-          <button class="action-button neutral" data-action="details">${icon("info", 15)}<span>Detalhes</span></button>
-          ${canDelete ? `<button class="action-button danger icon-only" data-action="delete" aria-label="Excluir">${icon("trash", 15)}</button>` : ""}
+          <div class="media-card-meta">
+            <span>${icon("user",13)}${escapeHtml(file.uploader_name || "Membro")}</span>
+            <span>${icon("clock",13)}${formatTime(new Date(file.created_at))}</span>
+            <span>${icon("files",13)}${formatBytes(file.size_bytes)}</span>
+          </div>
+          <div class="media-card-actions">
+            <button class="action-button" data-action="download">${icon("download",15)}<span>Baixar original</span></button>
+            <button class="action-button neutral icon-only" data-action="details" aria-label="Detalhes">${icon("info",16)}</button>
+            ${canDelete ? `<button class="action-button danger icon-only" data-action="delete" aria-label="Excluir">${icon("trash",15)}</button>` : ""}
+          </div>
         </div>`;
+      card.querySelectorAll('[data-action="details"]').forEach((b) => b.addEventListener("click", () => openDetails(file)));
       card.querySelector('[data-action="download"]').addEventListener("click", () => downloadFile(file));
-      card.querySelector('[data-action="details"]').addEventListener("click", () => openDetails(file));
       card.querySelector('[data-action="delete"]')?.addEventListener("click", () => deleteFile(file));
       els.mobileFilesList.appendChild(card);
     });
 
-    els.filesFooter.textContent = `${serviceFiles.length} ${serviceFiles.length === 1 ? "arquivo" : "arquivos"} neste culto`;
+    els.filesFooter.textContent = activeFileFilter === "all"
+      ? `${serviceFiles.length} ${serviceFiles.length === 1 ? "arquivo" : "arquivos"} neste culto`
+      : `${visible.length} de ${serviceFiles.length} arquivos neste filtro`;
+  }
+
+  function matchesActiveFilter(file) {
+    if (activeFileFilter === "all") return true;
+    if (activeFileFilter === "photo" || activeFileFilter === "video") return file.media_kind === activeFileFilter;
+    return file.category === activeFileFilter;
   }
 
   function renderActivity(serviceFiles) {
     const items = serviceFiles.slice(0, 6).map((f) => ({
-      text: `${f.uploader_name || "Membro"} enviou ${f.original_name}`,
+      text: `${f.uploader_name || "Membro"} enviou ${f.title?.trim() || baseName(f.original_name)}`,
       date: new Date(f.created_at)
     }));
 
@@ -371,7 +404,7 @@
     els.dialogDownloadButton.classList.add("hidden");
     els.detailsName.textContent = `Culto • ${formatDateBR(date)}`;
     const names = list.slice(0, 12).map((f) => `
-      <div class="detail-row"><span>${formatTime(new Date(f.created_at))}</span><span>${escapeHtml(f.original_name)} • ${formatBytes(f.size_bytes)}</span></div>`).join("");
+      <div class="detail-row"><span>${formatTime(new Date(f.created_at))}</span><span>${escapeHtml(f.title?.trim() || baseName(f.original_name))} • ${formatBytes(f.size_bytes)}</span></div>`).join("");
     els.detailsBody.innerHTML = `<div class="detail-row"><span>Total</span><span>${list.length} arquivos • ${formatBytes(list.reduce((s,f)=>s+Number(f.size_bytes||0),0))}</span></div>${names}`;
     els.detailsDialog.showModal();
   }
@@ -379,40 +412,166 @@
   function openDetails(file) {
     activeDialogFile = file;
     els.dialogDownloadButton.classList.remove("hidden");
-    els.detailsName.textContent = file.original_name;
+    const title = file.title?.trim() || baseName(file.original_name);
+    const isPhoto = file.media_kind === "photo";
+    els.detailsName.textContent = title;
     els.detailsBody.innerHTML = `
+      ${file.thumbnail_url ? `<img class="detail-preview-image" src="${escapeAttr(file.thumbnail_url)}" alt="Capa de ${escapeAttr(title)}" />` : ""}
+      <div class="detail-row"><span>Tipo</span><span>${isPhoto ? "Foto" : "Vídeo"}</span></div>
+      <div class="detail-row"><span>Categoria</span><span>${escapeHtml(categoryLabel(file.category))}</span></div>
+      <div class="detail-row"><span>Nome original</span><span>${escapeHtml(file.original_name)}</span></div>
       <div class="detail-row"><span>Enviado por</span><span>${escapeHtml(file.uploader_name || "Membro")}</span></div>
       <div class="detail-row"><span>Data</span><span>${formatDateBR(file.service_date)} às ${formatTime(new Date(file.created_at))}</span></div>
       <div class="detail-row"><span>Tamanho</span><span>${formatBytes(file.size_bytes)}</span></div>
-      <div class="detail-row"><span>Formato</span><span>${escapeHtml(fileExtension(file.original_name).toUpperCase() || file.mime_type || "Vídeo")}</span></div>
+      <div class="detail-row"><span>Formato</span><span>${escapeHtml(fileExtension(file.original_name).toUpperCase() || file.mime_type || (isPhoto ? "Imagem" : "Vídeo"))}</span></div>
       <div class="detail-row"><span>Armazenamento</span><span>Cloudflare R2 privado</span></div>
       <div class="detail-row"><span>Qualidade</span><span>Arquivo original, sem conversão</span></div>`;
     els.detailsDialog.showModal();
   }
 
-  function handleSelectedFiles(selected) {
-    const accepted = selected.filter((file) => {
-      const ext = fileExtension(file.name).toLowerCase();
-      return file.type.startsWith("video/") || ["mov","mp4","m4v","avi","webm"].includes(ext);
-    });
-
+  async function handleSelectedFiles(selected) {
+    const accepted = selected.filter(isSupportedMediaFile);
     if (!accepted.length) {
-      toast("Nenhum vídeo válido", "Selecione arquivos de vídeo da galeria.", "error");
+      toast("Nenhum arquivo válido", "Selecione fotos ou vídeos da galeria.", "error");
       return;
     }
 
     const maxBytes = Number(cfg.MAX_UPLOAD_BYTES || 0);
-    const tooLarge = maxBytes > 0 ? accepted.filter((f) => f.size > maxBytes) : [];
+    const allowed = accepted.filter((file) => !maxBytes || file.size <= maxBytes);
+    const tooLarge = accepted.filter((file) => maxBytes > 0 && file.size > maxBytes);
     if (tooLarge.length) {
-      toast("Arquivo acima do limite do app", `${tooLarge[0].name} tem ${formatBytes(tooLarge[0].size)}.`, "error");
+      toast("Arquivo acima do limite", `${tooLarge[0].name} tem ${formatBytes(tooLarge[0].size)}.`, "error");
     }
+    if (!allowed.length) return;
 
-    accepted.filter((f) => !maxBytes || f.size <= maxBytes).forEach((file) => {
-      const duplicate = queue.some(item => item.file.name === file.name && item.file.size === file.size && !["success","cancelled"].includes(item.state));
-      if (duplicate) return;
+    cleanupPreparedPreviewUrls();
+    preparedItems = allowed.map((file) => ({
+      id: crypto.randomUUID(),
+      file,
+      kind: mediaKind(file),
+      title: defaultTitle(file.name),
+      category: "outro",
+      thumbnailBlob: null,
+      previewUrl: "",
+      thumbState: "loading"
+    }));
+
+    renderPreparation();
+    els.prepareDialog?.showModal();
+
+    // Gera capas locais sem alterar o arquivo original. Se o navegador não conseguir
+    // decodificar HEIC/MOV específico, o upload continua normalmente com ícone de fallback.
+    for (const item of preparedItems) {
+      try {
+        const blob = await generateThumbnail(item.file, item.kind);
+        if (blob) {
+          item.thumbnailBlob = blob;
+          item.previewUrl = URL.createObjectURL(blob);
+          item.thumbState = "ready";
+        } else {
+          item.thumbState = "fallback";
+        }
+      } catch {
+        item.thumbState = "fallback";
+      }
+      updatePreparationThumb(item);
+    }
+  }
+
+  function isSupportedMediaFile(file) {
+    const ext = fileExtension(file.name).toLowerCase();
+    return file.type.startsWith("video/") || file.type.startsWith("image/") ||
+      ["mov","mp4","m4v","avi","webm","jpg","jpeg","png","webp","heic","heif","gif"].includes(ext);
+  }
+
+  function mediaKind(file) {
+    const ext = fileExtension(file.name).toLowerCase();
+    if (file.type.startsWith("image/") || ["jpg","jpeg","png","webp","heic","heif","gif"].includes(ext)) return "photo";
+    return "video";
+  }
+
+  function renderPreparation() {
+    if (!els.prepareList) return;
+    els.prepareCount.textContent = `${preparedItems.length} ${preparedItems.length === 1 ? "arquivo selecionado" : "arquivos selecionados"}`;
+    els.prepareList.innerHTML = "";
+
+    for (const item of preparedItems) {
+      const card = document.createElement("article");
+      card.className = "prepare-item";
+      card.dataset.id = item.id;
+      card.innerHTML = `
+        <div class="prepare-thumb-box" data-thumb-id="${escapeAttr(item.id)}">
+          <span class="prepare-thumb-loading">${icon(item.kind === "photo" ? "image" : "video", 30)}<small>Gerando capa…</small></span>
+        </div>
+        <div class="prepare-fields">
+          <div class="prepare-original-line">
+            <span class="media-kind-pill">${item.kind === "photo" ? `${icon("image",12)} Foto` : `${icon("video",12)} Vídeo`}</span>
+            <span>${escapeHtml(item.file.name)} • ${formatBytes(item.file.size)}</span>
+          </div>
+          <label>
+            <span>Título para a equipe</span>
+            <input class="prepare-title-input" type="text" maxlength="100" value="${escapeAttr(item.title)}" placeholder="Ex.: Entrada do pastor" />
+          </label>
+          <label>
+            <span>Categoria</span>
+            <select class="prepare-category-select">
+              ${categoryOptions(item.category)}
+            </select>
+          </label>
+        </div>
+        <button class="prepare-remove" type="button" aria-label="Remover arquivo">${icon("close",17)}</button>`;
+      card.querySelector(".prepare-title-input").addEventListener("input", (e) => item.title = e.target.value.slice(0,100));
+      card.querySelector(".prepare-category-select").addEventListener("change", (e) => item.category = e.target.value);
+      card.querySelector(".prepare-remove").addEventListener("click", () => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        preparedItems = preparedItems.filter((x) => x.id !== item.id);
+        renderPreparation();
+        if (!preparedItems.length) closePreparation();
+      });
+      els.prepareList.appendChild(card);
+      if (item.thumbState !== "loading") updatePreparationThumb(item);
+    }
+    els.prepareSendButton.disabled = preparedItems.length === 0;
+    els.prepareSendButton.textContent = preparedItems.length === 1 ? "Enviar 1 arquivo" : `Enviar ${preparedItems.length} arquivos`;
+  }
+
+  function updatePreparationThumb(item) {
+    const box = els.prepareList?.querySelector(`[data-thumb-id="${CSS.escape(item.id)}"]`);
+    if (!box) return;
+    if (item.previewUrl) {
+      box.innerHTML = `<img src="${escapeAttr(item.previewUrl)}" alt="Prévia de ${escapeAttr(item.title || item.file.name)}" />${item.kind === "video" ? `<span class="prepare-play">${icon("play",17)}</span>` : ""}`;
+    } else {
+      box.innerHTML = `<span class="prepare-thumb-loading fallback">${icon(item.kind === "photo" ? "image" : "video", 32)}<small>Sem prévia</small></span>`;
+    }
+  }
+
+  function categoryOptions(selected) {
+    return [
+      ["louvor","Louvor"],["pregacao","Pregação"],["publico","Público"],["igreja","Igreja"],
+      ["story","Story / Reels"],["bastidores","Bastidores"],["outro","Outro"]
+    ].map(([value,label]) => `<option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>`).join("");
+  }
+
+  function confirmPreparedFiles() {
+    if (!preparedItems.length) return;
+    const cards = [...els.prepareList.querySelectorAll(".prepare-item")];
+    cards.forEach((card) => {
+      const item = preparedItems.find((x) => x.id === card.dataset.id);
+      if (!item) return;
+      item.title = (card.querySelector(".prepare-title-input")?.value || item.title).trim().slice(0,100) || defaultTitle(item.file.name);
+      item.category = card.querySelector(".prepare-category-select")?.value || "outro";
+    });
+
+    for (const prepared of preparedItems) {
+      const duplicate = queue.some((item) => item.file.name === prepared.file.name && item.file.size === prepared.file.size && !["success","cancelled"].includes(item.state));
+      if (duplicate) continue;
       queue.push({
         id: crypto.randomUUID(),
-        file,
+        file: prepared.file,
+        kind: prepared.kind,
+        title: prepared.title,
+        category: prepared.category,
+        thumbnailBlob: prepared.thumbnailBlob,
         progress: 0,
         uploadedBytes: 0,
         state: navigator.onLine ? "waiting" : "waiting-network",
@@ -425,10 +584,100 @@
         speed: 0,
         startedAt: 0
       });
-    });
+    }
 
+    els.prepareDialog.returnValue = "send";
+    els.prepareDialog.close();
+    cleanupPreparedPreviewUrls();
+    preparedItems = [];
     renderQueue();
     processQueue();
+  }
+
+  function closePreparation() {
+    cleanupPreparedPreviewUrls();
+    preparedItems = [];
+    if (els.prepareDialog?.open) els.prepareDialog.close();
+  }
+
+  function cleanupPreparedPreviewUrls() {
+    for (const item of preparedItems) {
+      if (item.previewUrl) {
+        try { URL.revokeObjectURL(item.previewUrl); } catch {}
+        item.previewUrl = "";
+      }
+    }
+  }
+
+  async function generateThumbnail(file, kind) {
+    if (kind === "photo") return await imageThumbnail(file);
+    return await videoThumbnail(file);
+  }
+
+  async function imageThumbnail(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = url;
+      await promiseWithTimeout(new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      }), 12000);
+      return await canvasThumbnail(img.naturalWidth, img.naturalHeight, (ctx,w,h) => ctx.drawImage(img,0,0,w,h));
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function videoThumbnail(file) {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.src = url;
+    try {
+      await promiseWithTimeout(new Promise((resolve, reject) => {
+        video.onloadedmetadata = resolve;
+        video.onerror = reject;
+      }), 15000);
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      const target = Math.min(Math.max(duration * 0.12, 0.08), 1.5, Math.max(0.08, duration - 0.05));
+      await promiseWithTimeout(new Promise((resolve, reject) => {
+        const done = () => resolve();
+        video.onseeked = done;
+        video.onloadeddata = () => { if (Math.abs(video.currentTime - target) < 0.05) done(); };
+        video.onerror = reject;
+        try { video.currentTime = target; } catch { resolve(); }
+      }), 15000);
+      if (!video.videoWidth || !video.videoHeight) return null;
+      return await canvasThumbnail(video.videoWidth, video.videoHeight, (ctx,w,h) => ctx.drawImage(video,0,0,w,h));
+    } finally {
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  async function canvasThumbnail(sourceW, sourceH, draw) {
+    const maxSide = 640;
+    const scale = Math.min(1, maxSide / Math.max(sourceW, sourceH));
+    const width = Math.max(1, Math.round(sourceW * scale));
+    const height = Math.max(1, Math.round(sourceH * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) return null;
+    ctx.fillStyle = "#111827";
+    ctx.fillRect(0,0,width,height);
+    draw(ctx,width,height);
+    return await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.78));
+  }
+
+  function promiseWithTimeout(promise, ms) {
+    return Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
   }
 
   async function processQueue() {
@@ -458,7 +707,7 @@
       item.uploadedBytes = item.file.size;
       item.error = "";
       renderQueueItem(item);
-      toast("Vídeo enviado", `${item.file.name} foi salvo no R2 sem compressão.`, "success");
+      toast(item.kind === "photo" ? "Foto enviada" : "Vídeo enviado", `${item.title} foi salvo no R2 em qualidade original.`, "success");
       await loadDashboard();
     } catch (error) {
       if (item.cancelled) {
@@ -489,7 +738,10 @@
         type: file.type || guessMime(file.name),
         serviceDate: currentServiceDate,
         fingerprint,
-        partSize: requestedPartSize
+        partSize: requestedPartSize,
+        title: item.title,
+        category: item.category,
+        mediaKind: item.kind
       })
     });
 
@@ -500,6 +752,10 @@
     item.uploadToken = upload.uploadToken;
     item.partSize = Number(upload.partSize);
     if (!item.uploadToken) throw new Error("A API não retornou o token temporário do upload.");
+
+    if (item.thumbnailBlob && !upload.thumbnailPath) {
+      await uploadThumbnailWithRetry(item);
+    }
 
     const completed = new Map((upload.parts || []).map(p => [Number(p.partNumber), Number(p.size || 0)]));
     item.uploadedBytes = [...completed.values()].reduce((sum, n) => sum + n, 0);
@@ -545,6 +801,28 @@
     await uploadApiFetch(item, `/api/uploads/${encodeURIComponent(item.uploadId)}/complete`, { method: "POST", body: "{}" });
   }
 
+  async function uploadThumbnailWithRetry(item) {
+    let lastError;
+    for (const delay of [0, 900, 2200]) {
+      if (delay) await sleep(delay);
+      try {
+        const response = await fetch(`${trimSlash(cfg.WORKER_URL)}/api/uploads/${encodeURIComponent(item.uploadId)}/thumbnail`, {
+          method: "PUT",
+          headers: { "X-Upload-Token": item.uploadToken, "Content-Type": "image/jpeg" },
+          body: item.thumbnailBlob
+        });
+        const text = await response.text();
+        const body = safeJson(text);
+        if (!response.ok) throw Object.assign(new Error(body?.error || `Erro HTTP ${response.status}`), { status: response.status });
+        return body;
+      } catch (error) {
+        lastError = error;
+        if (error?.status && error.status >= 400 && error.status < 500) break;
+      }
+    }
+    throw lastError || new Error("Não foi possível enviar a miniatura.");
+  }
+
   async function uploadPartWithRetry(item, partNumber, blob, onProgress) {
     const delays = [0, 1200, 2500, 5000, 10000, 20000];
     let lastError = null;
@@ -565,7 +843,7 @@
         }
       }
     }
-    throw lastError || new Error("Não foi possível enviar uma parte do vídeo.");
+    throw lastError || new Error("Não foi possível enviar uma parte do arquivo.");
   }
 
   async function uploadPartXHR(item, partNumber, blob, onProgress) {
@@ -655,25 +933,20 @@
       cancelled: "Cancelado"
     }[item.state] || item.state;
 
-    const extra = item.state === "uploading" && item.speed > 0
-      ? ` • ${formatBytes(item.speed)}/s`
-      : "";
-
-    const resumableNote = item.state === "waiting-network"
-      ? " • partes concluídas preservadas"
-      : "";
+    const extra = item.state === "uploading" && item.speed > 0 ? ` • ${formatBytes(item.speed)}/s` : "";
+    const resumableNote = item.state === "waiting-network" ? " • partes concluídas preservadas" : "";
 
     div.className = `queue-item ${item.state === "success" ? "success" : ["error","cancelled"].includes(item.state) ? "error" : ""}`;
     div.innerHTML = `
       <div class="queue-top">
-        <div class="queue-file-icon">${icon(item.state === "success" ? "checkCircle" : "video", 18)}</div>
+        <div class="queue-file-icon">${icon(item.state === "success" ? "checkCircle" : (item.kind === "photo" ? "image" : "video"), 18)}</div>
         <div class="queue-name">
-          <strong>${escapeHtml(item.file.name)}</strong>
-          <span>${formatBytes(item.file.size)}${extra}${item.error ? ` • ${escapeHtml(item.error)}` : ""}${resumableNote}</span>
+          <strong>${escapeHtml(item.title || item.file.name)}</strong>
+          <span>${escapeHtml(categoryLabel(item.category))} • ${formatBytes(item.file.size)}${extra}${item.error ? ` • ${escapeHtml(item.error)}` : ""}${resumableNote}</span>
         </div>
         <div class="queue-right">
           <span class="queue-state">${stateText}</span>
-          ${!["success","cancelled"].includes(item.state) ? `<button class="queue-cancel" type="button" aria-label="Cancelar envio">${icon("close", 15)}</button>` : ""}
+          ${!["success","cancelled"].includes(item.state) ? `<button class="queue-cancel" type="button" aria-label="Cancelar envio">${icon("close",15)}</button>` : ""}
         </div>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${item.progress}%"></div></div>`;
@@ -688,7 +961,8 @@
 
   async function downloadFile(file) {
     try {
-      toast("Preparando download", `${file.original_name} será baixado do R2.`, "");
+      const title = file.title?.trim() || baseName(file.original_name);
+      toast("Preparando download", `${title} será baixado do R2.`, "");
       const data = await apiFetch(`/api/files/${encodeURIComponent(file.id)}/download-token`, { method: "POST", body: "{}" });
       if (!data?.url) throw new Error("A API não retornou o link de download.");
       window.location.href = data.url;
@@ -698,12 +972,13 @@
   }
 
   async function deleteFile(file) {
-    const ok = window.confirm(`Excluir “${file.original_name}”?\n\nO vídeo será removido permanentemente do R2.`);
+    const title = file.title?.trim() || baseName(file.original_name);
+    const ok = window.confirm(`Excluir “${title}”?\n\nO arquivo original e a miniatura serão removidos permanentemente do R2.`);
     if (!ok) return;
 
     try {
       await apiFetch(`/api/files/${encodeURIComponent(file.id)}`, { method: "DELETE" });
-      toast("Arquivo excluído", file.original_name, "success");
+      toast("Arquivo excluído", title, "success");
       if (els.detailsDialog.open) els.detailsDialog.close();
       await loadDashboard();
     } catch (error) {
@@ -796,6 +1071,30 @@
     item.innerHTML = `<span class="toast-icon">${icon(toastIcon, 18)}</span><div><strong>${escapeHtml(title)}</strong><span>${escapeHtml(message)}</span></div>`;
     els.toastContainer.appendChild(item);
     setTimeout(() => item.remove(), 4300);
+  }
+
+  function categoryLabel(value) {
+    return ({
+      louvor: "Louvor",
+      pregacao: "Pregação",
+      publico: "Público",
+      igreja: "Igreja",
+      story: "Story / Reels",
+      bastidores: "Bastidores",
+      outro: "Outro"
+    })[value] || "Outro";
+  }
+
+  function baseName(name) {
+    return String(name || "Arquivo").replace(/\.[^.]+$/, "") || "Arquivo";
+  }
+
+  function defaultTitle(name) {
+    return baseName(name)
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 100) || "Arquivo";
   }
 
   function normalizeUploadError(error) {
@@ -905,7 +1204,10 @@
 
   function guessMime(name) {
     const ext = fileExtension(name).toLowerCase();
-    return ({ mov: "video/quicktime", mp4: "video/mp4", m4v: "video/x-m4v", webm: "video/webm", avi: "video/x-msvideo" })[ext] || "application/octet-stream";
+    return ({
+      mov: "video/quicktime", mp4: "video/mp4", m4v: "video/x-m4v", webm: "video/webm", avi: "video/x-msvideo",
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic", heif: "image/heif", gif: "image/gif"
+    })[ext] || "application/octet-stream";
   }
 
   function initials(name) {

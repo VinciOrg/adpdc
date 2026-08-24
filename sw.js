@@ -1,4 +1,4 @@
-const CACHE_NAME = "ad-central-midia-r2-v3-real";
+const CACHE_NAME = "ad-central-midia-r2-v4-media-gallery";
 const LOCAL_ASSETS = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const LOCAL_ASSETS = [
   "./config.js",
   "./manifest.webmanifest",
   "./assets/logo-igreja.jpg",
+  "./assets/brand-mark.png",
   "./assets/icon-192.png",
   "./assets/icon-512.png"
 ];

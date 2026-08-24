@@ -1,23 +1,42 @@
-PATCH VISUAL — CENTRAL DE MÍDIA
+PATCH 3 - CENTRAL DE MIDIA
+Fotos + videos + capas + titulo + categoria
 
-Este patch NÃO mexe no Worker, R2, Supabase, login, senhas ou uploads.
-Ele altera somente a interface.
+O QUE ESTE PATCH MUDA
+- aceita FOTOS e VIDEOS no mesmo seletor
+- antes do upload abre uma tela de preparacao
+- gera miniatura/capa localmente no celular
+- permite dar um titulo legivel ao arquivo
+- permite marcar categoria: Louvor, Pregacao, Publico, Igreja, Story/Reels, Bastidores ou Outro
+- mantem o nome original salvo no banco
+- o arquivo original continua sem compressao
+- salva a miniatura separadamente no R2
+- editor ve uma GALERIA VISUAL em vez de uma parede de IMG_1234.MOV
+- filtros por foto, video e categoria
+- download usa o titulo como nome amigavel, preservando a extensao original
+- ao apagar um arquivo, a miniatura tambem e apagada
 
-SUBSTITUA no seu projeto atual:
-1. index.html
-2. styles.css
-3. icons.js
+ARQUIVOS DO SITE PARA SUBSTITUIR
+- index.html
+- styles.css
+- icons.js
+- app.js
+- sw.js
+- assets/brand-mark.png (se ainda nao existir)
 
-E ADICIONE:
-4. assets/brand-mark.png
+WORKER
+Substitua a pasta worker pela pasta worker deste patch e execute:
 
-Não substitua app.js, config.js, worker/, wrangler.toml ou qualquer arquivo do backend.
+  Set-ExecutionPolicy -Scope Process Bypass
+  .\DEPLOY_PATCH.ps1
 
-Mudanças:
-- Logo da igreja recortada e limpa, sem aquele quadrado branco enorme.
-- Nome ASSEMBLEIA DE DEUS visível no cabeçalho.
-- MINISTÉRIO PRAIA DOS CAÇÕES visível no cabeçalho e login.
-- Cabeçalho responsivo para celular.
-- Ícone da Central redesenhado.
-- Ícone de "Enviar vídeos" redesenhado como filme + upload.
-- Campo de login agora mostra somente "Usuário".
+SUPABASE
+No seu projeto MIDIA, a migracao deste patch JA FOI APLICADA.
+Nao precisa rodar PATCH_SUPABASE.sql novamente.
+O SQL esta incluso apenas como copia/idempotencia.
+
+NAO ALTERA
+- usuarios e senhas
+- secrets do Worker
+- config.js
+- bucket R2 existente
+- projeto Vinci
