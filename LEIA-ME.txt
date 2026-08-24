@@ -1,0 +1,15 @@
+PATCH — CORREÇÃO DA MINIATURA NO IPHONE
+
+Substitua somente:
+- index.html
+- styles.css
+- sw.js
+
+Não mexe em app.js, config.js, Worker, R2 ou Supabase.
+
+O que foi corrigido:
+- miniatura não invade mais os campos de título/categoria;
+- no iPhone, a capa agora ocupa a largura do card e os campos ficam abaixo;
+- botão X fica sobre a capa, sem ocupar coluna e esmagar o formulário;
+- usa dvh para se comportar melhor quando o teclado do iPhone abre;
+- versão do cache foi alterada para o PWA/Safari buscar o CSS novo.

@@ -1,4 +1,4 @@
-const CACHE_NAME = "ad-central-midia-r2-v4-media-gallery";
+const CACHE_NAME = "ad-central-midia-r2-v5-thumb-mobile";
 const LOCAL_ASSETS = [
   "./",
   "./index.html",
