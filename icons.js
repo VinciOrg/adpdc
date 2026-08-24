@@ -33,6 +33,8 @@
     check: '<path d="m5 12 4 4L19 6"/>',
     checkCircle: '<circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/>',
     alert: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
+    bellOff: '<path d="m3 3 18 18"/><path d="M18 8a6 6 0 0 0-9.3-5"/><path d="M6 8c0 7-3 7-3 9h14"/><path d="M10 21h4"/>',
     lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'
   };
 

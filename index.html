@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="assets/icon-192.png" />
   <link rel="apple-touch-icon" href="assets/icon-192.png" />
-  <link rel="stylesheet" href="styles.css?v=nozoom1" />
+  <link rel="stylesheet" href="styles.css?v=push1" />
 </head>
 <body>
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
@@ -95,6 +95,11 @@
           <span class="status-dot online"></span>
           <span>Online</span>
         </span>
+        <button id="notificationButton" class="notification-button" type="button" aria-label="Ativar notificações" title="Notificações">
+          <span class="notification-icon" data-icon="bell" data-icon-size="20"></span>
+          <span id="notificationLabel" class="notification-label">Ativar notificações</span>
+          <span id="notificationDot" class="notification-dot hidden" aria-hidden="true"></span>
+        </button>
         <button id="userMenuButton" class="user-chip" type="button">
           <span id="userInitials" class="user-avatar">M</span>
           <span class="user-copy">
@@ -183,7 +188,7 @@
           </div>
         </section>
 
-        <section class="files-card">
+        <section id="filesSection" class="files-card">
           <div class="section-head">
             <div>
               <span class="section-icon" data-icon="folder" data-icon-size="21"></span>
@@ -298,6 +303,6 @@
 
   <script src="icons.js"></script>
   <script src="config.js"></script>
-  <script src="app.js?v=nozoom1"></script>
+  <script src="app.js?v=push1"></script>
 </body>
 </html>

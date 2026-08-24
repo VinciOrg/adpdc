@@ -1,4 +1,4 @@
-const CACHE_NAME = "ad-central-midia-r2-v6-nozoom";
+const CACHE_NAME = "ad-central-midia-r2-v7-push";
 const LOCAL_ASSETS = [
   "./",
   "./index.html",
@@ -38,4 +38,60 @@ self.addEventListener("fetch", (event) => {
       })
       .catch(() => caches.match(event.request))
   );
+});
+
+
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { title: "Central de Mídia", body: event.data ? event.data.text() : "Novo arquivo recebido." };
+  }
+
+  const title = payload.title || "Central de Mídia";
+  const options = {
+    body: payload.body || "Novo arquivo recebido.",
+    icon: payload.icon || "./assets/icon-192.png",
+    badge: payload.badge || "./assets/icon-192.png",
+    tag: payload.tag || "central-midia-novo-arquivo",
+    renotify: true,
+    data: {
+      url: payload.url || "./#filesSection",
+      fileId: payload.fileId || null
+    }
+  };
+
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      typeof self.registration.setAppBadge === "function"
+        ? self.registration.setAppBadge().catch(() => {})
+        : Promise.resolve()
+    ])
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const requested = event.notification?.data?.url || "./#filesSection";
+  const targetUrl = new URL(requested, self.registration.scope).href;
+
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if (new URL(client.url).origin === new URL(targetUrl).origin) {
+        try { await client.navigate(targetUrl); } catch {}
+        await client.focus();
+        if (typeof self.registration.clearAppBadge === "function") {
+          await self.registration.clearAppBadge().catch(() => {});
+        }
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+    if (typeof self.registration.clearAppBadge === "function") {
+      await self.registration.clearAppBadge().catch(() => {});
+    }
+  })());
 });

@@ -62,7 +62,7 @@
       "clearFinishedButton","refreshButton","filesEmpty","filesTableBody","mobileFilesList","filesFooter",
       "activityList","previousServices","detailsDialog","detailsName","detailsBody","dialogDownloadButton",
       "closeDialogButton","toastContainer","prepareDialog","prepareList","prepareCount","prepareSendButton",
-      "prepareCancelButton","fileFilters"
+      "prepareCancelButton","fileFilters","notificationButton","notificationLabel","notificationDot"
     ].forEach((id) => els[id] = document.getElementById(id));
   }
 
@@ -82,6 +82,7 @@
       }
     });
     els.logoutButton.addEventListener("click", handleLogout);
+    els.notificationButton?.addEventListener("click", toggleNotifications);
 
     els.selectFilesButton.addEventListener("click", () => els.fileInput.click());
     els.mobileUploadButton.addEventListener("click", () => els.fileInput.click());
@@ -133,6 +134,126 @@
 
     // Stops double-click/double-tap zoom without interfering with normal taps.
     document.addEventListener("dblclick", (event) => event.preventDefault(), { passive: false });
+  }
+
+  async function refreshNotificationState() {
+    if (!els.notificationButton) return;
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setNotificationButton("unsupported");
+      return;
+    }
+
+    if (Notification.permission === "denied") {
+      setNotificationButton("denied");
+      return;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      setNotificationButton(subscription ? "enabled" : "disabled");
+
+      // Se a permissão já foi dada, sincroniza silenciosamente a inscrição com o usuário atual.
+      if (subscription && Notification.permission === "granted" && currentUser) {
+        await apiFetch("/api/push/subscribe", {
+          method: "POST",
+          body: JSON.stringify(subscription.toJSON())
+        }).catch(() => {});
+      }
+    } catch {
+      setNotificationButton("disabled");
+    }
+  }
+
+  function setNotificationButton(state) {
+    if (!els.notificationButton) return;
+    const labels = {
+      enabled: "Notificações ativas",
+      disabled: "Ativar notificações",
+      denied: "Notificações bloqueadas",
+      unsupported: "Notificações indisponíveis"
+    };
+    els.notificationButton.classList.toggle("enabled", state === "enabled");
+    els.notificationButton.classList.toggle("denied", state === "denied");
+    els.notificationButton.disabled = state === "unsupported";
+    els.notificationButton.setAttribute("aria-label", labels[state] || labels.disabled);
+    els.notificationButton.title = labels[state] || labels.disabled;
+    if (els.notificationLabel) els.notificationLabel.textContent = labels[state] || labels.disabled;
+    const iconWrap = els.notificationButton.querySelector(".notification-icon");
+    if (iconWrap) iconWrap.innerHTML = icon(state === "denied" ? "bellOff" : "bell", 20);
+    if (els.notificationDot) els.notificationDot.classList.toggle("hidden", state !== "enabled");
+  }
+
+  async function toggleNotifications() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      toast("Notificações indisponíveis", "Este navegador não oferece Web Push para este site.", "error");
+      return;
+    }
+
+    try {
+      // No iPhone, o pedido de permissão precisa acontecer diretamente no toque,
+      // antes de qualquer await que possa consumir a ativação do usuário.
+      if (Notification.permission === "default") {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+          setNotificationButton(permission === "denied" ? "denied" : "disabled");
+          return;
+        }
+      }
+
+      if (Notification.permission === "denied") {
+        setNotificationButton("denied");
+        toast("Notificações bloqueadas", "Ative as notificações nas configurações do iPhone para a Central de Mídia.", "error");
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (subscription) {
+        const endpoint = subscription.endpoint;
+        await subscription.unsubscribe();
+        await apiFetch("/api/push/subscribe", {
+          method: "DELETE",
+          body: JSON.stringify({ endpoint })
+        }).catch(() => {});
+        setNotificationButton("disabled");
+        toast("Notificações desativadas", "Este aparelho não receberá avisos de novos arquivos.", "success");
+        return;
+      }
+
+      const data = await apiFetch("/api/push/public-key");
+      if (!data?.publicKey) throw new Error("Chave de notificações não configurada no Worker.");
+
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(data.publicKey)
+      });
+
+      await apiFetch("/api/push/subscribe", {
+        method: "POST",
+        body: JSON.stringify(subscription.toJSON())
+      });
+
+      setNotificationButton("enabled");
+      toast("Notificações ativadas", "Você será avisado quando outra pessoa enviar uma foto ou vídeo.", "success");
+    } catch (error) {
+      console.error("push subscribe", error);
+      const iosStandalone = window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+      const message = /iphone|ipad|ipod/i.test(navigator.userAgent) && !iosStandalone
+        ? "No iPhone, adicione a Central à Tela de Início e abra pelo ícone para ativar o Push."
+        : (error.message || "Não foi possível ativar as notificações.");
+      toast("Não foi possível ativar", message, "error");
+      await refreshNotificationState();
+    }
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
   }
 
   function setupConnectivity() {
@@ -206,6 +327,8 @@
     renderCurrentUser();
     await loadDashboard();
     setupRealtime();
+    if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge().catch(() => {});
+    await refreshNotificationState();
   }
 
   function showLogin() {

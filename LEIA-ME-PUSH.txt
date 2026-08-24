@@ -1,0 +1,39 @@
+PATCH — NOTIFICAÇÕES PUSH
+
+O banco do projeto MIDIA já foi atualizado com media_push_subscriptions.
+NÃO rode nada no projeto Vinci.
+
+1) Substitua no site:
+   index.html
+   styles.css
+   icons.js
+   app.js
+   sw.js
+
+2) Substitua a pasta worker/ pela pasta worker/ deste patch.
+
+3) No PowerShell, na raiz do patch/projeto:
+   Set-ExecutionPolicy -Scope Process Bypass
+   .\CONFIGURAR_PUSH_E_DEPLOY.ps1
+
+O script:
+- instala a biblioteca Web Push no Worker;
+- gera as chaves VAPID no seu computador se elas ainda não existirem;
+- salva VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY como secrets da Cloudflare;
+- NÃO mostra a chave privada no site;
+- publica o Worker ad-central-midia-api.
+
+4) Abra:
+   https://ad-central-midia-api.adpdc.workers.dev/health
+
+Os checks vapidPublic e vapidPrivate devem aparecer true.
+
+5) No iPhone:
+- o site precisa estar adicionado à Tela de Início para Web Push no iOS;
+- abra pelo ícone da Central de Mídia;
+- entre na conta;
+- toque no sino “Ativar notificações”;
+- permita as notificações quando o iPhone perguntar.
+
+Quando OUTRA conta concluir o envio de uma foto ou vídeo, o aparelho inscrito recebe o aviso.
+O próprio aparelho que enviou não recebe a notificação daquele mesmo arquivo para evitar spam.

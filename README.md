@@ -1,30 +1,33 @@
-# Central de Mídia — R2 + login por usuário
+# Patch Web Push — Central de Mídia
 
-Versão sem e-mail e sem Supabase Auth.
+Adiciona Web Push ao PWA da equipe de mídia.
 
-## Login inicial
-- `lider` / `midia2026` — Líder
-- `editor` / `editar2026` — Editor
-- `camera1` / `camera2026` — Membro
-- `camera2` / `camera2026` — Membro
+## Incluído
 
-As senhas são armazenadas no Supabase apenas como hash bcrypt. O navegador recebe um token aleatório de sessão; o banco e o bucket R2 ficam atrás do Cloudflare Worker.
+- botão de sino no cabeçalho;
+- inscrição Push por aparelho e por usuário;
+- subscriptions armazenadas no Supabase `MIDIA`;
+- VAPID no Cloudflare Worker;
+- push automático quando um upload termina;
+- texto diferente para foto e vídeo;
+- toque na notificação abre a área de arquivos;
+- badge do PWA quando suportado;
+- endpoints mortos (404/410) são desativados automaticamente;
+- o remetente do arquivo não recebe seu próprio aviso.
 
-## Backend
-- Supabase `MIDIA`: contas, sessões e metadados.
-- Cloudflare R2: vídeos originais.
-- Cloudflare Worker: autenticação, upload multipart, download e exclusão.
+## Instalação
 
-## Depois de alterar o Worker
-Na pasta `worker`:
+Substitua `index.html`, `styles.css`, `icons.js`, `app.js`, `sw.js` e a pasta `worker/`.
+
+Depois execute no Windows PowerShell:
+
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-npx wrangler deploy
+.\CONFIGURAR_PUSH_E_DEPLOY.ps1
 ```
 
-O `config.js` já aponta para `https://ad-central-midia-api.adpdc.workers.dev`.
+O script preserva as chaves VAPID se os dois secrets já existirem no Worker, evitando invalidar inscrições existentes.
 
-## Correção 24/08/2026
-Esta revisão corrige a configuração do Worker para definir explicitamente `SUPABASE_URL` no `wrangler.toml`.
-O endpoint `/health` agora informa, sem revelar segredos, se R2, URL do Supabase e os dois secrets necessários estão carregados.
-Para publicar, execute `DEPLOY_AGORA.ps1` na raiz desta pasta.
+## iPhone
+
+No iOS, Web Push funciona para o web app salvo na Tela de Início. A permissão é solicitada somente depois do toque no botão de notificações.

@@ -1338,3 +1338,49 @@ input, textarea, select {
     font-size: 16px;
   }
 }
+
+/* PUSH NOTIFICATIONS */
+.notification-button {
+  position: relative;
+  min-height: 42px;
+  border: 1px solid #e2e7ef;
+  border-radius: 13px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #4f5d73;
+  background: #fff;
+  font-weight: 800;
+  font-size: 11px;
+  box-shadow: 0 3px 10px rgba(20,31,48,.035);
+}
+.notification-button:hover { background: #f8faff; border-color: #d5deed; }
+.notification-button.enabled { color: var(--blue); background: var(--blue-soft); border-color: #cbd9ff; }
+.notification-button.denied { color: #9a555b; background: #fff5f5; border-color: #f2d3d5; }
+.notification-icon { display: grid; place-items: center; }
+.notification-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #19b35a;
+  box-shadow: 0 0 0 2px #fff;
+}
+.notification-button.enabled .notification-dot { display: block !important; }
+
+@media (max-width: 760px) {
+  .notification-button {
+    width: 42px;
+    height: 42px;
+    min-height: 42px;
+    padding: 0;
+    justify-content: center;
+    flex: 0 0 42px;
+    border-radius: 12px;
+  }
+  .notification-label { display: none; }
+  .notification-dot { top: 6px; right: 6px; }
+}
