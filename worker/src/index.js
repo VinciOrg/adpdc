@@ -3,6 +3,7 @@ const MAX_FILE_BYTES = 20 * 1024 * 1024 * 1024; // 20 GiB do app
 const MIN_PART_SIZE = 5 * MiB;
 const MAX_PARTS = 10000;
 const DOWNLOAD_TOKEN_TTL_SECONDS = 10 * 60;
+const PREVIEW_TOKEN_TTL_SECONDS = 60 * 60;
 const UPLOAD_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
@@ -44,12 +45,22 @@ export default {
         return await handleDownload(request, env, path, cors);
       }
 
+      if (path.startsWith("/api/preview/") && request.method === "GET") {
+        return await handlePreview(request, env, path, cors);
+      }
+
       // Partes grandes usam um token temporário específico do upload.
       // Assim não precisamos consultar o Supabase Auth a cada chunk de 16 MiB.
       let match = path.match(/^\/api\/uploads\/([0-9a-f-]+)\/parts\/(\d+)$/i);
       if (match && request.method === "PUT") {
         const uploadAuth = await requireUploadToken(request, env, match[1]);
         return await handleUploadPart(request, env, uploadAuth.userId, match[1], Number(match[2]), cors);
+      }
+
+      match = path.match(/^\/api\/uploads\/([0-9a-f-]+)\/thumbnail$/i);
+      if (match && request.method === "PUT") {
+        const uploadAuth = await requireUploadToken(request, env, match[1]);
+        return await handleUploadThumbnail(request, env, uploadAuth.userId, match[1], cors);
       }
 
       match = path.match(/^\/api\/uploads\/([0-9a-f-]+)\/complete$/i);
@@ -77,9 +88,13 @@ export default {
 
       if (path === "/api/files" && request.method === "GET") {
         const rows = await db(env, "media_files", {
-          query: "select=id,uploader_id,uploader_name,original_name,storage_path,mime_type,size_bytes,service_date,created_at&order=created_at.desc&limit=500"
+          query: "select=id,uploader_id,uploader_name,original_name,title,category,media_kind,thumbnail_path,storage_path,mime_type,size_bytes,service_date,created_at&order=created_at.desc&limit=500"
         });
-        return json({ files: rows || [] }, 200, cors);
+        const files = await Promise.all((rows || []).map(async (row) => ({
+          ...row,
+          thumbnail_url: row.thumbnail_path ? await buildPreviewUrl(request, env, row.id) : null
+        })));
+        return json({ files }, 200, cors);
       }
 
       if (path === "/api/uploads/init" && request.method === "POST") {
@@ -117,6 +132,9 @@ async function handleInitUpload(request, env, user, profile, cors) {
   const mime = String(body.type || "application/octet-stream").slice(0, 150);
   const serviceDate = validateDate(body.serviceDate);
   const fingerprint = String(body.fingerprint || "").slice(0, 200);
+  const mediaKind = validateMediaKind(body.mediaKind, mime, originalName);
+  const title = cleanTitle(body.title || originalName);
+  const category = validateCategory(body.category);
   let partSize = Number(body.partSize || 16 * MiB);
 
   if (!originalName) throw httpError(400, "Nome do arquivo inválido.");
@@ -128,15 +146,21 @@ async function handleInitUpload(request, env, user, profile, cors) {
 
   const existing = await findResumableUpload(env, user.id, fingerprint);
   if (existing && Number(existing.size_bytes) === size && existing.original_name === originalName) {
+    await db(env, "media_uploads", {
+      method: "PATCH",
+      query: `id=eq.${encodeURIComponent(existing.id)}`,
+      body: { title, category, media_kind: mediaKind, updated_at: new Date().toISOString() },
+      prefer: "return=minimal"
+    });
+    existing.title = title;
+    existing.category = category;
+    existing.media_kind = mediaKind;
     const parts = await getUploadParts(env, existing.id);
-    return json({
-      resumed: true,
-      upload: await publicUpload(existing, parts, env)
-    }, 200, cors);
+    return json({ resumed: true, upload: await publicUpload(existing, parts, env) }, 200, cors);
   }
 
   const safe = safeFileName(originalName);
-  const objectKey = `${serviceDate}/${user.id}/${crypto.randomUUID()}-${safe}`;
+  const objectKey = `${serviceDate}/${user.id}/${mediaKind === "photo" ? "photos" : "videos"}/${crypto.randomUUID()}-${safe}`;
   const multipart = await env.MEDIA_BUCKET.createMultipartUpload(objectKey, {
     httpMetadata: {
       contentType: mime || "application/octet-stream",
@@ -145,6 +169,9 @@ async function handleInitUpload(request, env, user, profile, cors) {
     },
     customMetadata: {
       originalName: originalName.slice(0, 512),
+      title: title.slice(0, 100),
+      category,
+      mediaKind,
       uploaderId: user.id,
       serviceDate
     }
@@ -152,12 +179,15 @@ async function handleInitUpload(request, env, user, profile, cors) {
 
   const rows = await db(env, "media_uploads", {
     method: "POST",
-    query: "select=id,uploader_id,uploader_name,fingerprint,original_name,object_key,r2_upload_id,mime_type,size_bytes,part_size,service_date,status,created_at",
+    query: "select=id,uploader_id,uploader_name,fingerprint,original_name,title,category,media_kind,thumbnail_path,object_key,r2_upload_id,mime_type,size_bytes,part_size,service_date,status,created_at",
     body: {
       uploader_id: user.id,
-      uploader_name: profile?.name || user.email || "Membro",
+      uploader_name: profile?.name || "Membro",
       fingerprint,
       original_name: originalName,
+      title,
+      category,
+      media_kind: mediaKind,
       object_key: objectKey,
       r2_upload_id: multipart.uploadId,
       mime_type: mime,
@@ -209,7 +239,7 @@ async function handleUploadPart(request, env, userId, uploadId, partNumber, cors
     uploaded = await multipart.uploadPart(partNumber, request.body);
   } catch (error) {
     console.error("R2 uploadPart", error);
-    throw httpError(502, "O R2 recusou uma parte do vídeo. O app pode tentar novamente.");
+    throw httpError(502, "O R2 recusou uma parte do arquivo. O app pode tentar novamente.");
   }
 
   await db(env, "media_upload_parts", {
@@ -235,6 +265,39 @@ async function handleUploadPart(request, env, userId, uploadId, partNumber, cors
   return json({ ok: true, partNumber: uploaded.partNumber, etag: uploaded.etag, size: expectedSize }, 200, cors);
 }
 
+async function handleUploadThumbnail(request, env, userId, uploadId, cors) {
+  const upload = await getUploadForUser(env, uploadId, userId);
+  if (upload.status !== "uploading") throw httpError(409, "Este upload não está mais ativo.");
+
+  const contentType = String(request.headers.get("Content-Type") || "image/jpeg").toLowerCase();
+  if (!contentType.startsWith("image/")) throw httpError(415, "A miniatura precisa ser uma imagem.");
+
+  const body = await request.arrayBuffer();
+  if (!body.byteLength) throw httpError(400, "Miniatura vazia.");
+  if (body.byteLength > 2 * MiB) throw httpError(413, "Miniatura acima de 2 MiB.");
+
+  const thumbnailKey = `${upload.service_date}/${upload.uploader_id}/thumbnails/${upload.id}.jpg`;
+  await env.MEDIA_BUCKET.put(thumbnailKey, body, {
+    httpMetadata: {
+      contentType: "image/jpeg",
+      cacheControl: "private, max-age=3600"
+    },
+    customMetadata: {
+      uploadId: upload.id,
+      mediaKind: upload.media_kind || "video"
+    }
+  });
+
+  await db(env, "media_uploads", {
+    method: "PATCH",
+    query: `id=eq.${encodeURIComponent(upload.id)}`,
+    body: { thumbnail_path: thumbnailKey, updated_at: new Date().toISOString() },
+    prefer: "return=minimal"
+  });
+
+  return json({ ok: true, thumbnailPath: thumbnailKey }, 200, cors);
+}
+
 async function handleCompleteUpload(env, userId, uploadId, cors) {
   const upload = await getUploadForUser(env, uploadId, userId);
   if (upload.status === "completed") {
@@ -248,7 +311,7 @@ async function handleCompleteUpload(env, userId, uploadId, cors) {
   const parts = await getUploadParts(env, upload.id);
   const expectedParts = Math.ceil(Number(upload.size_bytes) / Number(upload.part_size));
   if (parts.length !== expectedParts) {
-    throw httpError(409, `Ainda faltam partes do vídeo (${parts.length}/${expectedParts}).`);
+    throw httpError(409, `Ainda faltam partes do arquivo (${parts.length}/${expectedParts}).`);
   }
 
   for (let i = 0; i < expectedParts; i++) {
@@ -261,22 +324,25 @@ async function handleCompleteUpload(env, userId, uploadId, cors) {
     try {
       object = await multipart.complete(parts.map(p => ({ partNumber: Number(p.part_number), etag: p.etag })));
     } catch (error) {
-      // Se a conclusão ocorreu mas a resposta se perdeu, o HEAD recupera o objeto.
       object = await env.MEDIA_BUCKET.head(upload.object_key);
       if (!object) {
         console.error("R2 complete", error);
-        throw httpError(502, "Não foi possível finalizar o vídeo no R2. Tente novamente.");
+        throw httpError(502, "Não foi possível finalizar o arquivo no R2. Tente novamente.");
       }
     }
   }
 
   const fileRows = await db(env, "media_files", {
     method: "POST",
-    query: "on_conflict=storage_path&select=id,uploader_id,uploader_name,original_name,storage_path,mime_type,size_bytes,service_date,created_at",
+    query: "on_conflict=storage_path&select=id,uploader_id,uploader_name,original_name,title,category,media_kind,thumbnail_path,storage_path,mime_type,size_bytes,service_date,created_at",
     body: {
       uploader_id: upload.uploader_id,
       uploader_name: upload.uploader_name,
       original_name: upload.original_name,
+      title: upload.title || cleanTitle(upload.original_name),
+      category: upload.category || "outro",
+      media_kind: upload.media_kind || "video",
+      thumbnail_path: upload.thumbnail_path || null,
       storage_path: upload.object_key,
       mime_type: upload.mime_type,
       size_bytes: Number(object?.size || upload.size_bytes),
@@ -310,6 +376,9 @@ async function handleAbortUpload(env, userId, uploadId, cors) {
     } catch (error) {
       console.warn("R2 abort ignored", error);
     }
+    if (upload.thumbnail_path) {
+      try { await env.MEDIA_BUCKET.delete(upload.thumbnail_path); } catch {}
+    }
     await db(env, "media_uploads", {
       method: "PATCH",
       query: `id=eq.${encodeURIComponent(upload.id)}`,
@@ -342,15 +411,13 @@ async function handleDownload(request, env, path, cors) {
   const file = await getFileById(env, fileId);
   if (!file) throw httpError(404, "Arquivo não encontrado.");
 
-  const object = await env.MEDIA_BUCKET.get(file.storage_path, {
-    range: request.headers
-  });
-  if (!object) throw httpError(404, "Vídeo não encontrado no R2.");
+  const object = await env.MEDIA_BUCKET.get(file.storage_path, { range: request.headers });
+  if (!object) throw httpError(404, "Arquivo não encontrado no R2.");
 
   const headers = new Headers(cors);
   object.writeHttpMetadata(headers);
   headers.set("Content-Type", file.mime_type || object.httpMetadata?.contentType || "application/octet-stream");
-  headers.set("Content-Disposition", contentDispositionAttachment(file.original_name));
+  headers.set("Content-Disposition", contentDispositionAttachment(downloadDisplayName(file)));
   headers.set("Accept-Ranges", "bytes");
   headers.set("Cache-Control", "private, no-store, max-age=0");
   headers.set("ETag", object.httpEtag);
@@ -369,13 +436,34 @@ async function handleDownload(request, env, path, cors) {
   return new Response(object.body, { status, headers });
 }
 
+async function handlePreview(request, env, path, cors) {
+  const fileId = path.split("/").pop();
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token") || "";
+  const verified = await verifyPreviewToken(env.MEDIA_TOKEN_SECRET, token, fileId);
+  if (!verified) throw httpError(401, "Prévia expirada.");
+
+  const file = await getFileById(env, fileId);
+  if (!file?.thumbnail_path) throw httpError(404, "Miniatura não encontrada.");
+  const object = await env.MEDIA_BUCKET.get(file.thumbnail_path);
+  if (!object) throw httpError(404, "Miniatura não encontrada no R2.");
+
+  const headers = new Headers(cors);
+  headers.set("Content-Type", object.httpMetadata?.contentType || "image/jpeg");
+  headers.set("Content-Disposition", "inline");
+  headers.set("Cache-Control", "private, max-age=1800");
+  headers.set("ETag", object.httpEtag);
+  return new Response(object.body, { status: 200, headers });
+}
+
 async function handleDeleteFile(env, user, profile, fileId, cors) {
   const file = await getFileById(env, fileId);
   if (!file) throw httpError(404, "Arquivo não encontrado.");
   const allowed = file.uploader_id === user.id || profile?.role === "leader";
   if (!allowed) throw httpError(403, "Somente o autor ou o líder pode excluir este arquivo.");
 
-  await env.MEDIA_BUCKET.delete(file.storage_path);
+  const toDelete = [file.storage_path, file.thumbnail_path].filter(Boolean);
+  if (toDelete.length) await env.MEDIA_BUCKET.delete(toDelete);
   await db(env, "media_files", {
     method: "DELETE",
     query: `id=eq.${encodeURIComponent(file.id)}`,
@@ -491,7 +579,7 @@ async function getUploadParts(env, uploadId) {
 
 async function getFileById(env, fileId) {
   const rows = await db(env, "media_files", {
-    query: `id=eq.${encodeURIComponent(fileId)}&select=id,uploader_id,uploader_name,original_name,storage_path,mime_type,size_bytes,service_date,created_at&limit=1`
+    query: `id=eq.${encodeURIComponent(fileId)}&select=id,uploader_id,uploader_name,original_name,title,category,media_kind,thumbnail_path,storage_path,mime_type,size_bytes,service_date,created_at&limit=1`
   });
   return rows?.[0] || null;
 }
@@ -551,6 +639,10 @@ async function publicUpload(row, parts, env) {
   return {
     id: row.id,
     name: row.original_name,
+    title: row.title || cleanTitle(row.original_name),
+    category: row.category || "outro",
+    mediaKind: row.media_kind || "video",
+    thumbnailPath: row.thumbnail_path || null,
     size: Number(row.size_bytes),
     type: row.mime_type,
     serviceDate: row.service_date,
@@ -564,6 +656,30 @@ async function publicUpload(row, parts, env) {
       size: Number(p.size_bytes)
     }))
   };
+}
+
+async function buildPreviewUrl(request, env, fileId) {
+  const exp = Math.floor(Date.now() / 1000) + PREVIEW_TOKEN_TTL_SECONDS;
+  const payload = `preview|${fileId}|${exp}`;
+  const signature = await hmacSign(env.MEDIA_TOKEN_SECRET, payload);
+  const token = `${base64url(payload)}.${signature}`;
+  return `${new URL(request.url).origin}/api/preview/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`;
+}
+
+async function verifyPreviewToken(secret, token, fileId) {
+  try {
+    const [payloadB64, signature] = token.split(".");
+    if (!payloadB64 || !signature) return false;
+    const payload = new TextDecoder().decode(base64urlToBytes(payloadB64));
+    const [kind, id, expText] = payload.split("|");
+    if (kind !== "preview" || id !== fileId) return false;
+    const exp = Number(expText);
+    if (!exp || exp < Math.floor(Date.now() / 1000)) return false;
+    const expected = await hmacSign(secret, payload);
+    return timingSafeEqual(expected, signature);
+  } catch {
+    return false;
+  }
 }
 
 async function requireUploadToken(request, env, expectedUploadId) {
@@ -604,6 +720,45 @@ function cleanOriginalName(name) {
   return String(name || "").replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, 220);
 }
 
+function cleanTitle(value) {
+  const raw = String(value || "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/\.[^.]{1,8}$/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (raw || "Arquivo").slice(0, 100);
+}
+
+function validateCategory(value) {
+  const allowed = new Set(["louvor","pregacao","publico","igreja","story","bastidores","outro"]);
+  const category = String(value || "outro").toLowerCase();
+  return allowed.has(category) ? category : "outro";
+}
+
+function validateMediaKind(value, mime, name) {
+  const requested = String(value || "").toLowerCase();
+  if (requested === "photo" || requested === "video") return requested;
+  const lowerMime = String(mime || "").toLowerCase();
+  const ext = String(name || "").split(".").pop().toLowerCase();
+  if (lowerMime.startsWith("image/") || ["jpg","jpeg","png","webp","heic","heif","gif"].includes(ext)) return "photo";
+  return "video";
+}
+
+function downloadDisplayName(file) {
+  const original = String(file.original_name || "arquivo");
+  const dot = original.lastIndexOf(".");
+  const ext = dot >= 0 ? original.slice(dot) : "";
+  const base = cleanTitle(file.title || original)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9 _-]+/g, "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .slice(0, 120) || "arquivo";
+  return `${base}${ext}`;
+}
+
 function safeFileName(name) {
   const dot = name.lastIndexOf(".");
   const ext = dot >= 0 ? name.slice(dot).toLowerCase().replace(/[^a-z0-9.]/g, "") : "";
@@ -612,13 +767,13 @@ function safeFileName(name) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-zA-Z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 100) || "video";
+    .slice(0, 100) || "arquivo";
   return `${base}${ext}`;
 }
 
 function contentDispositionAttachment(name) {
-  const ascii = String(name || "video").replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name || "video")}`;
+  const ascii = String(name || "arquivo").replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name || "arquivo")}`;
 }
 
 function randomToken(bytes = 32) {
