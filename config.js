@@ -7,13 +7,13 @@
 
 window.MEDIA_CONFIG = {
   // Supabase > Connect
-  SUPABASE_URL: "",
-  SUPABASE_KEY: "", // sb_publishable_... (ou anon legado)
+  SUPABASE_URL: "https://nmprsfrpncquxmutisas.supabase.co",
+  SUPABASE_KEY: "sb_publishable_LOr2-JR1nPHLfmYtfyVjdg_9UO_z29b",  // sb_publishable_... (ou anon legado)
 
   // URL publicada do Cloudflare Worker.
   // Ex.: https://ad-central-midia-api.seu-subdominio.workers.dev
-  WORKER_URL: "",
-
+  WORKER_URL: "https://ad-central-midia-api.adpdc.workers.dev",
+   
   // Login curto: "lider" vira lider@midia.adpc.app
   AUTH_EMAIL_DOMAIN: "midia.adpc.app",
 
