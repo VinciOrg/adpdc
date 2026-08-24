@@ -27,6 +27,7 @@
     wireEvents();
     setServiceDateLabel();
     setupConnectivity();
+    setupZoomLock();
 
     if ("serviceWorker" in navigator && location.protocol !== "file:") {
       navigator.serviceWorker.register("./sw.js").catch(() => {});
@@ -122,6 +123,16 @@
         if (button.dataset.scroll === "files") document.querySelector(".files-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     });
+  }
+
+  function setupZoomLock() {
+    // iOS Safari still exposes gesture events in some versions/PWA modes.
+    ["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
+      document.addEventListener(eventName, (event) => event.preventDefault(), { passive: false });
+    });
+
+    // Stops double-click/double-tap zoom without interfering with normal taps.
+    document.addEventListener("dblclick", (event) => event.preventDefault(), { passive: false });
   }
 
   function setupConnectivity() {

@@ -1,15 +1,16 @@
-PATCH — CORREÇÃO DA MINIATURA NO IPHONE
+PATCH — BLOQUEIO DE ZOOM
 
 Substitua somente:
 - index.html
 - styles.css
+- app.js
 - sw.js
 
-Não mexe em app.js, config.js, Worker, R2 ou Supabase.
+Não mexe em Worker, R2, Supabase, config.js ou login.
 
-O que foi corrigido:
-- miniatura não invade mais os campos de título/categoria;
-- no iPhone, a capa agora ocupa a largura do card e os campos ficam abaixo;
-- botão X fica sobre a capa, sem ocupar coluna e esmagar o formulário;
-- usa dvh para se comportar melhor quando o teclado do iPhone abre;
-- versão do cache foi alterada para o PWA/Safari buscar o CSS novo.
+O patch bloqueia:
+- pinch zoom no iPhone/iPad
+- zoom por duplo toque
+- zoom automático do Safari ao focar inputs
+
+Também mantém a correção anterior da thumbnail mobile.

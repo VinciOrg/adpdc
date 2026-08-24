@@ -1321,3 +1321,20 @@ button { cursor: pointer; }
   .prepare-dialog-head h2 { font-size: 20px; }
   .prepare-help { margin-inline: 12px; }
 }
+
+/* PATCH NO-ZOOM — interface interna da equipe */
+html, body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-x: none;
+}
+
+input, textarea, select {
+  font-size: 16px;
+}
+
+@media (max-width: 760px) {
+  input, textarea, select, button {
+    font-size: 16px;
+  }
+}
