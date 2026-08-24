@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#fffaf5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="description" content="Central privada para envio e recebimento de vídeos originais da equipe de mídia." />
+
+  <title>Central de Mídia | AD Praia dos Cações</title>
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="assets/icon-192.png" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- LOGIN -->
+  <main id="loginView" class="login-view">
+    <section class="login-card">
+      <div class="login-brand">
+        <img src="assets/logo-igreja.jpg" alt="Logo Assembleia de Deus Ministério Praia dos Cações" />
+        <div>
+          <p class="eyebrow">EQUIPE DE MÍDIA</p>
+          <h1>Central de Mídia</h1>
+          <p>Envie e receba vídeos sem compressão, direto do celular.</p>
+        </div>
+      </div>
+
+      <form id="loginForm" class="login-form" autocomplete="on">
+        <label>
+          <span>Usuário ou e-mail</span>
+          <input id="loginUser" type="text" autocomplete="username" inputmode="text" autocapitalize="none" spellcheck="false" placeholder="Ex.: lider" required />
+        </label>
+
+        <label>
+          <span>Senha</span>
+          <div class="password-wrap">
+            <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Sua senha" required />
+            <button id="togglePassword" class="icon-button" type="button" aria-label="Mostrar senha"><span data-icon="eye"></span></button>
+          </div>
+        </label>
+
+        <button class="primary-button full" type="submit">
+          <span>Entrar na central</span>
+          <span data-icon="chevronRight" data-icon-size="18"></span>
+        </button>
+
+        <p id="loginHint" class="login-hint"></p>
+      </form>
+
+      <div class="login-note">
+        <span class="status-dot online"></span>
+        <span>Arquivos enviados vão ao R2 sem compressão nem conversão.</span>
+      </div>
+    </section>
+  </main>
+
+  <!-- APP -->
+  <div id="appView" class="app-view hidden">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <img src="assets/logo-igreja.jpg" alt="Logo da igreja" />
+        <span class="brand-divider" aria-hidden="true"></span>
+        <div class="app-title-wrap">
+          <div class="app-icon"><span data-icon="video" data-icon-size="22"></span></div>
+          <div>
+            <h1>Central de Mídia</h1>
+            <p>Vídeos brutos em qualidade original</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <span id="connectionBadge" class="connection-badge">
+          <span class="status-dot online"></span>
+          <span>Online</span>
+        </span>
+        <button id="userMenuButton" class="user-chip" type="button">
+          <span id="userInitials" class="user-avatar">M</span>
+          <span class="user-copy">
+            <strong id="currentUserName">Equipe de Mídia</strong>
+            <small id="currentUserRole">Membro</small>
+          </span>
+          <span class="user-chevron" data-icon="chevronDown" data-icon-size="16"></span>
+        </button>
+        <div id="userMenu" class="user-menu hidden">
+          <button id="logoutButton" type="button">Sair</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-shell">
+      <main class="main-column">
+        <section class="service-card">
+          <div class="service-info">
+            <div class="service-icon"><span data-icon="calendar" data-icon-size="26"></span></div>
+            <div>
+              <p class="eyebrow warm">TRANSMISSÃO E CONTEÚDO</p>
+              <h2 id="serviceTitle">Culto Atual</h2>
+              <p id="serviceDateLabel" class="service-date">Domingo</p>
+            </div>
+          </div>
+
+          <div class="service-statuses">
+            <span class="pill live"><span></span>Ao vivo</span>
+            <span class="pill original"><span data-icon="shield" data-icon-size="14"></span>Arquivos originais</span>
+            <span class="pill team"><span></span>Equipe online</span>
+          </div>
+
+          <div class="metrics-grid">
+            <article class="metric-card">
+              <span class="metric-icon warm" data-icon="upload" data-icon-size="19"></span>
+              <div>
+                <small>Arquivos enviados</small>
+                <strong id="metricFiles">0</strong>
+                <span>neste culto</span>
+              </div>
+            </article>
+            <article class="metric-card">
+              <span class="metric-icon blue" data-icon="files" data-icon-size="19"></span>
+              <div>
+                <small>Tamanho total</small>
+                <strong id="metricSize">0 MB</strong>
+                <span>neste culto</span>
+              </div>
+            </article>
+            <article class="metric-card">
+              <span class="metric-icon purple" data-icon="clock" data-icon-size="19"></span>
+              <div>
+                <small>Último envio</small>
+                <strong id="metricLast">—</strong>
+                <span id="metricLastAgo">nenhum</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section id="uploadCard" class="upload-card">
+          <input id="fileInput" type="file" accept="video/*,.mov,.mp4,.m4v,.avi,.webm" multiple hidden />
+          <div class="upload-zone" id="dropZone">
+            <div class="upload-symbol"><span data-icon="upload" data-icon-size="28"></span></div>
+            <div class="upload-copy">
+              <h2>Enviar vídeos</h2>
+              <p>No celular, toque no botão e escolha os vídeos da galeria.</p>
+              <div class="upload-assurances">
+                <span><i data-icon="check" data-icon-size="13"></i>Sem compressão</span>
+                <span><i data-icon="check" data-icon-size="13"></i>Qualidade total</span>
+                <span><i data-icon="check" data-icon-size="13"></i>R2 multipart retomável</span>
+              </div>
+            </div>
+            <button id="selectFilesButton" class="primary-button" type="button">Selecionar arquivos</button>
+          </div>
+
+          <div id="queueSection" class="queue-section hidden">
+            <div class="queue-head">
+              <div>
+                <strong>Fila de envio</strong>
+                <span id="queueSummary">0 arquivos</span>
+              </div>
+              <button id="clearFinishedButton" class="text-button" type="button">Limpar concluídos</button>
+            </div>
+            <div id="uploadQueue" class="upload-queue"></div>
+          </div>
+        </section>
+
+        <section class="files-card">
+          <div class="section-head">
+            <div>
+              <span class="section-icon" data-icon="folder" data-icon-size="21"></span>
+              <div>
+                <h2>Arquivos recebidos</h2>
+                <p>Disponíveis para a equipe assim que o envio ao R2 termina.</p>
+              </div>
+            </div>
+            <button id="refreshButton" class="secondary-button" type="button"><span data-icon="refresh" data-icon-size="16"></span>Atualizar</button>
+          </div>
+
+          <div id="filesEmpty" class="empty-state hidden">
+            <div class="empty-icon"><span data-icon="files" data-icon-size="34"></span></div>
+            <h3>Nenhum vídeo enviado ainda</h3>
+            <p>O primeiro arquivo do culto aparecerá aqui.</p>
+          </div>
+
+          <div class="table-wrap">
+            <table class="files-table">
+              <thead>
+                <tr>
+                  <th>Nome do arquivo</th>
+                  <th>Enviado por</th>
+                  <th>Horário</th>
+                  <th>Tamanho</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="filesTableBody"></tbody>
+            </table>
+          </div>
+
+          <div id="mobileFilesList" class="mobile-files-list"></div>
+          <div id="filesFooter" class="files-footer">0 arquivos</div>
+        </section>
+      </main>
+
+      <aside class="sidebar">
+        <section class="side-card">
+          <div class="side-title"><span data-icon="activity" data-icon-size="21"></span><h2>Atividade da equipe</h2></div>
+          <div id="activityList" class="activity-list"></div>
+        </section>
+
+        <section class="side-card">
+          <div class="side-title"><span data-icon="folder" data-icon-size="21"></span><h2>Pastas anteriores</h2></div>
+          <div id="previousServices" class="previous-services"></div>
+        </section>
+
+        <section class="quality-card">
+          <div class="shield"><span data-icon="shield" data-icon-size="32"></span></div>
+          <div>
+            <p>Download sempre em</p>
+            <h3>qualidade original</h3>
+            <span>Sem compressão ou conversão do vídeo.</span>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <nav class="mobile-nav" aria-label="Navegação móvel">
+      <button class="mobile-nav-item active" data-scroll="top" type="button"><span data-icon="home" data-icon-size="21"></span><small>Início</small></button>
+      <button class="mobile-nav-item upload" id="mobileUploadButton" type="button"><span data-icon="plus" data-icon-size="27"></span><small>Enviar</small></button>
+      <button class="mobile-nav-item" data-scroll="files" type="button"><span data-icon="folder" data-icon-size="21"></span><small>Arquivos</small></button>
+    </nav>
+  </div>
+
+  <!-- MODAL DETALHES -->
+  <dialog id="detailsDialog" class="details-dialog">
+    <div class="dialog-head">
+      <div>
+        <p class="eyebrow warm">DETALHES DO ARQUIVO</p>
+        <h2 id="detailsName">Arquivo</h2>
+      </div>
+      <button id="closeDialogButton" class="icon-button big" type="button" aria-label="Fechar"><span data-icon="close" data-icon-size="23"></span></button>
+    </div>
+    <div id="detailsBody" class="details-body"></div>
+    <div class="dialog-actions">
+      <button id="dialogDownloadButton" class="primary-button full" type="button">Baixar original</button>
+    </div>
+  </dialog>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="icons.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
