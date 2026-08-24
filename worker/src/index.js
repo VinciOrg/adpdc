@@ -20,7 +20,20 @@ export default {
       const path = url.pathname.replace(/\/+$/, "") || "/";
 
       if (path === "/" || path === "/health") {
-        return json({ ok: true, service: "AD Central de Mídia R2", time: new Date().toISOString() }, 200, cors);
+        const checks = {
+          r2: Boolean(env.MEDIA_BUCKET),
+          supabaseUrl: Boolean(env.SUPABASE_URL),
+          supabaseSecret: Boolean(env.SUPABASE_SECRET_KEY),
+          tokenSecret: Boolean(env.MEDIA_TOKEN_SECRET)
+        };
+        const ready = Object.values(checks).every(Boolean);
+        return json({
+          ok: ready,
+          ready,
+          service: "AD Central de Mídia R2",
+          checks,
+          time: new Date().toISOString()
+        }, ready ? 200 : 503, cors);
       }
 
       if (path === "/api/auth/login" && request.method === "POST") {
