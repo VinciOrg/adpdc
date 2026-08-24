@@ -1,22 +1,14 @@
-CENTRAL DE MÍDIA — NOVA VERSÃO R2
-================================
+CENTRAL DE MÍDIA — VERSÃO USUÁRIO + SENHA
 
-Esta versão NÃO usa Supabase Storage para os vídeos.
+Não usa e-mail. Não usa Supabase Auth.
 
-Vídeos: Cloudflare R2 multipart
-Login/metadata/realtime: Supabase
-API segura: Cloudflare Worker
+Contas:
+lider / midia2026
+editor / editar2026
+camera1 / camera2026
+camera2 / camera2026
 
-ORDEM:
-1) Execute supabase-setup.sql no Supabase.
-2) Preencha SUPABASE_URL e SUPABASE_KEY em config.js.
-3) Rode CRIAR_4_USUARIOS.ps1.
-4) Entre na pasta worker e siga o README para criar o bucket R2 e publicar o Worker.
-5) Cole a URL do Worker em WORKER_URL no config.js.
-6) Publique o site.
-
-IMPORTANTE:
-- NÃO coloque sb_secret_... dentro de config.js.
-- NÃO torne o bucket R2 público.
-- O site foi configurado para até 20 GiB por vídeo.
-- Um vídeo de 4 GB é enviado por multipart normalmente.
+IMPORTANTE: depois de substituir o projeto antigo por esta versão, publique o Worker atualizado:
+cd worker
+Set-ExecutionPolicy -Scope Process Bypass
+npx wrangler deploy

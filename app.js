@@ -5,7 +5,8 @@
   const roleLabels = { leader: "Líder", editor: "Editor", member: "Membro" };
   const icon = (name, size = 18, cls = "") => window.MediaIcons?.icon(name, size, cls) || "";
 
-  let client = null;
+  let sessionToken = localStorage.getItem("media_session_token") || "";
+  let pollTimer = null;
   let currentUser = null;
   let currentProfile = null;
   let files = [];
@@ -29,39 +30,24 @@
       navigator.serviceWorker.register("./sw.js").catch(() => {});
     }
 
-    if (!cfg.SUPABASE_URL || !cfg.SUPABASE_KEY || !cfg.WORKER_URL) {
+    if (!cfg.WORKER_URL) {
       showFatalConfigError();
       return;
     }
 
-    client = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    });
-
-    try {
-      const { data: { session }, error } = await client.auth.getSession();
-      if (error) throw error;
-      if (session?.user) await enterAppFromSupabase(session.user);
-      else showLogin();
-    } catch (error) {
+    if (!sessionToken) {
       showLogin();
-      setLoginError(error.message || "Não foi possível iniciar a sessão.");
+      return;
     }
 
-    client.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_OUT" || !session?.user) {
-        teardownRealtime();
-        showLogin();
-        return;
-      }
-      if (event === "SIGNED_IN" && currentUser?.id !== session.user.id) {
-        await enterAppFromSupabase(session.user);
-      }
-    });
+    try {
+      const data = await apiFetch("/api/auth/me");
+      await enterApp(data.user);
+    } catch {
+      sessionToken = "";
+      localStorage.removeItem("media_session_token");
+      showLogin();
+    }
   }
 
   function cacheElements() {
@@ -152,7 +138,7 @@
 
   function showFatalConfigError() {
     showLogin();
-    setLoginError("Preencha SUPABASE_URL, SUPABASE_KEY e WORKER_URL em config.js antes de usar a central.");
+    setLoginError("Preencha WORKER_URL em config.js antes de usar a central.");
   }
 
   function setLoginError(message) {
@@ -162,68 +148,38 @@
 
   async function handleLogin(ev) {
     ev.preventDefault();
-    if (!client) return showFatalConfigError();
 
-    const rawIdentity = els.loginUser.value.trim().toLowerCase();
+    const username = els.loginUser.value.trim().toLowerCase();
     const password = els.loginPassword.value;
-    const email = rawIdentity.includes("@")
-      ? rawIdentity
-      : `${rawIdentity}@${cfg.AUTH_EMAIL_DOMAIN || "midia.adpc.app"}`;
-
     const button = els.loginForm.querySelector("button[type='submit']");
     button.disabled = true;
     button.querySelector("span:first-child").textContent = "Entrando...";
     els.loginHint.textContent = "";
 
     try {
-      const { data, error } = await client.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      await enterAppFromSupabase(data.user);
+      const data = await publicApiFetch("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ username, password })
+      });
+      if (!data?.token || !data?.user) throw new Error("Resposta de login inválida.");
+      sessionToken = data.token;
+      localStorage.setItem("media_session_token", sessionToken);
+      await enterApp(data.user);
     } catch (error) {
-      const message = /invalid login credentials/i.test(error.message || "")
-        ? "Usuário ou senha incorretos."
-        : (error.message || "Não foi possível entrar.");
-      setLoginError(message);
+      setLoginError(error.message || "Usuário ou senha incorretos.");
     } finally {
       button.disabled = false;
       button.querySelector("span:first-child").textContent = "Entrar na central";
     }
   }
 
-  async function enterAppFromSupabase(user) {
+  async function enterApp(user) {
     currentUser = user;
-    currentProfile = await ensureProfile(user);
+    currentProfile = user;
     showApp();
     renderCurrentUser();
     await loadDashboard();
     setupRealtime();
-  }
-
-  async function ensureProfile(user) {
-    const { data, error } = await client
-      .from("media_profiles")
-      .select("id,name,username,role")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data) return data;
-
-    const username = (user.user_metadata?.username || user.email?.split("@")[0] || `membro-${user.id.slice(0,5)}`).toLowerCase();
-    const profile = {
-      id: user.id,
-      name: user.user_metadata?.name || username,
-      username,
-      role: "member"
-    };
-
-    const { data: inserted, error: insertError } = await client
-      .from("media_profiles")
-      .insert(profile)
-      .select("id,name,username,role")
-      .single();
-    if (insertError) throw insertError;
-    return inserted;
   }
 
   function showLogin() {
@@ -243,12 +199,14 @@
     els.userMenu.classList.add("hidden");
     teardownRealtime();
     cancelLocalRequests();
-    if (client) await client.auth.signOut();
+    try { if (sessionToken) await apiFetch("/api/auth/logout", { method: "POST", body: "{}" }); } catch {}
+    sessionToken = "";
+    localStorage.removeItem("media_session_token");
     showLogin();
   }
 
   function renderCurrentUser() {
-    const name = currentProfile?.name || currentUser?.email || "Membro";
+    const name = currentProfile?.name || currentUser?.username || "Membro";
     els.currentUserName.textContent = name;
     els.currentUserRole.textContent = roleLabels[currentProfile?.role] || "Membro";
     els.userInitials.textContent = initials(name);
@@ -256,16 +214,19 @@
 
   async function loadDashboard(showToast = false) {
     try {
-      const { data, error } = await client
-        .from("media_files")
-        .select("id,uploader_id,uploader_name,original_name,storage_path,mime_type,size_bytes,service_date,created_at")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      if (error) throw error;
-      files = data || [];
+      const data = await apiFetch("/api/files");
+      files = data?.files || [];
       renderDashboard();
       if (showToast) toast("Atualizado", "Lista de arquivos sincronizada.", "success");
     } catch (error) {
+      if (error?.status === 401) {
+        sessionToken = "";
+        localStorage.removeItem("media_session_token");
+        teardownRealtime();
+        showLogin();
+        setLoginError("Sua sessão expirou. Entre novamente.");
+        return;
+      }
       toast("Erro ao carregar", error.message || "Não foi possível carregar os arquivos.", "error");
     }
   }
@@ -768,10 +729,25 @@
     return body;
   }
 
-  async function apiFetch(path, options = {}) {
-    const token = await getAccessToken();
+  async function publicApiFetch(path, options = {}) {
     const headers = new Headers(options.headers || {});
-    headers.set("Authorization", `Bearer ${token}`);
+    if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    let response;
+    try {
+      response = await fetch(`${trimSlash(cfg.WORKER_URL)}${path}`, { ...options, headers });
+    } catch (error) {
+      throw Object.assign(new Error("Não foi possível alcançar a Central de Mídia."), { network: true, cause: error });
+    }
+    const text = await response.text();
+    const body = safeJson(text);
+    if (!response.ok) throw Object.assign(new Error(body?.error || `Erro HTTP ${response.status}`), { status: response.status });
+    return body;
+  }
+
+  async function apiFetch(path, options = {}) {
+    if (!sessionToken) throw Object.assign(new Error("Sessão expirada. Entre novamente."), { status: 401 });
+    const headers = new Headers(options.headers || {});
+    headers.set("Authorization", `Bearer ${sessionToken}`);
     if (options.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
     let response;
@@ -783,35 +759,22 @@
 
     const text = await response.text();
     const body = safeJson(text);
-    if (!response.ok) {
-      throw Object.assign(new Error(body?.error || `Erro HTTP ${response.status}`), { status: response.status });
-    }
+    if (!response.ok) throw Object.assign(new Error(body?.error || `Erro HTTP ${response.status}`), { status: response.status });
     return body;
-  }
-
-  async function getAccessToken() {
-    const { data: { session }, error } = await client.auth.getSession();
-    if (error) throw error;
-    if (!session?.access_token) throw new Error("Sessão expirada. Entre novamente.");
-    return session.access_token;
   }
 
   function setupRealtime() {
     teardownRealtime();
-    realtimeChannel = client
-      .channel("media-files-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "media_files" }, async (payload) => {
-        if (payload.eventType === "INSERT" && payload.new?.uploader_id !== currentUser.id) {
-          toast("Novo vídeo recebido", payload.new.original_name || "Um arquivo foi enviado.", "success");
-        }
-        await loadDashboard();
-      })
-      .subscribe();
+    // Com autenticação própria, atualizamos a lista em intervalos curtos.
+    // É leve e mantém os celulares sincronizados durante o culto.
+    pollTimer = setInterval(() => {
+      if (!document.hidden && navigator.onLine && sessionToken) loadDashboard(false);
+    }, 3500);
   }
 
   function teardownRealtime() {
-    if (client && realtimeChannel) client.removeChannel(realtimeChannel);
-    realtimeChannel = null;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
   }
 
   function setServiceDateLabel() {
