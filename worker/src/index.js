@@ -1,3 +1,5 @@
+import { buildPushPayload } from "@block65/webcrypto-web-push";
+
 const MiB = 1024 * 1024;
 const MAX_FILE_BYTES = 20 * 1024 * 1024 * 1024; // 20 GiB do app
 const MIN_PART_SIZE = 5 * MiB;
@@ -8,7 +10,7 @@ const UPLOAD_TOKEN_TTL_SECONDS = 24 * 60 * 60;
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin") || "";
     const cors = corsHeaders(origin, env);
 
@@ -25,7 +27,9 @@ export default {
           r2: Boolean(env.MEDIA_BUCKET),
           supabaseUrl: Boolean(env.SUPABASE_URL),
           supabaseSecret: Boolean(env.SUPABASE_SECRET_KEY),
-          tokenSecret: Boolean(env.MEDIA_TOKEN_SECRET)
+          tokenSecret: Boolean(env.MEDIA_TOKEN_SECRET),
+          vapidPublic: Boolean(env.VAPID_PUBLIC_KEY),
+          vapidPrivate: Boolean(env.VAPID_PRIVATE_KEY)
         };
         const ready = Object.values(checks).every(Boolean);
         return json({
@@ -66,7 +70,7 @@ export default {
       match = path.match(/^\/api\/uploads\/([0-9a-f-]+)\/complete$/i);
       if (match && request.method === "POST") {
         const uploadAuth = await requireUploadToken(request, env, match[1]);
-        return await handleCompleteUpload(env, uploadAuth.userId, match[1], cors);
+        return await handleCompleteUpload(env, uploadAuth.userId, match[1], cors, ctx);
       }
 
       match = path.match(/^\/api\/uploads\/([0-9a-f-]+)\/abort$/i);
@@ -84,6 +88,19 @@ export default {
 
       if (path === "/api/auth/logout" && request.method === "POST") {
         return await handleLogout(request, env, cors);
+      }
+
+      if (path === "/api/push/public-key" && request.method === "GET") {
+        if (!env.VAPID_PUBLIC_KEY) throw httpError(503, "Web Push ainda não foi configurado no Worker.");
+        return json({ publicKey: env.VAPID_PUBLIC_KEY }, 200, cors);
+      }
+
+      if (path === "/api/push/subscribe" && request.method === "POST") {
+        return await handlePushSubscribe(request, env, user, cors);
+      }
+
+      if (path === "/api/push/subscribe" && request.method === "DELETE") {
+        return await handlePushUnsubscribe(request, env, user, cors);
       }
 
       if (path === "/api/files" && request.method === "GET") {
@@ -298,7 +315,7 @@ async function handleUploadThumbnail(request, env, userId, uploadId, cors) {
   return json({ ok: true, thumbnailPath: thumbnailKey }, 200, cors);
 }
 
-async function handleCompleteUpload(env, userId, uploadId, cors) {
+async function handleCompleteUpload(env, userId, uploadId, cors, ctx) {
   const upload = await getUploadForUser(env, uploadId, userId);
   if (upload.status === "completed") {
     const existing = await db(env, "media_files", {
@@ -364,7 +381,14 @@ async function handleCompleteUpload(env, userId, uploadId, cors) {
     prefer: "return=minimal"
   });
 
-  return json({ ok: true, file: Array.isArray(fileRows) ? fileRows[0] : fileRows }, 200, cors);
+  const completedFile = Array.isArray(fileRows) ? fileRows[0] : fileRows;
+  if (completedFile && ctx?.waitUntil) {
+    ctx.waitUntil(sendNewMediaPush(env, completedFile, upload.uploader_id).catch((error) => {
+      console.error("Web Push", error);
+    }));
+  }
+
+  return json({ ok: true, file: completedFile }, 200, cors);
 }
 
 async function handleAbortUpload(env, userId, uploadId, cors) {
@@ -387,6 +411,104 @@ async function handleAbortUpload(env, userId, uploadId, cors) {
     });
   }
   return json({ ok: true }, 200, cors);
+}
+
+async function handlePushSubscribe(request, env, user, cors) {
+  const body = await request.json().catch(() => ({}));
+  const endpoint = String(body?.endpoint || "").trim();
+  const p256dh = String(body?.keys?.p256dh || "").trim();
+  const auth = String(body?.keys?.auth || "").trim();
+
+  if (!endpoint.startsWith("https://") || !p256dh || !auth) {
+    throw httpError(400, "Inscrição de notificação inválida.");
+  }
+  if (endpoint.length > 3000 || p256dh.length > 512 || auth.length > 512) {
+    throw httpError(400, "Inscrição de notificação inválida.");
+  }
+
+  await db(env, "media_push_subscriptions", {
+    method: "POST",
+    query: "on_conflict=endpoint",
+    body: {
+      user_id: user.id,
+      endpoint,
+      p256dh,
+      auth,
+      user_agent: String(request.headers.get("User-Agent") || "").slice(0, 500),
+      active: true,
+      updated_at: new Date().toISOString()
+    },
+    prefer: "resolution=merge-duplicates,return=minimal"
+  });
+
+  return json({ ok: true }, 200, cors);
+}
+
+async function handlePushUnsubscribe(request, env, user, cors) {
+  const body = await request.json().catch(() => ({}));
+  const endpoint = String(body?.endpoint || "").trim();
+  if (!endpoint) throw httpError(400, "Endpoint ausente.");
+
+  await db(env, "media_push_subscriptions", {
+    method: "DELETE",
+    query: `user_id=eq.${encodeURIComponent(user.id)}&endpoint=eq.${encodeURIComponent(endpoint)}`,
+    prefer: "return=minimal"
+  });
+  return json({ ok: true }, 200, cors);
+}
+
+async function sendNewMediaPush(env, file, uploaderId) {
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return;
+
+  const subscriptions = await db(env, "media_push_subscriptions", {
+    query: `active=eq.true&user_id=neq.${encodeURIComponent(uploaderId)}&select=id,user_id,endpoint,p256dh,auth&limit=100`
+  });
+  if (!subscriptions?.length) return;
+
+  const kind = file.media_kind === "photo" ? "foto" : "vídeo";
+  const title = file.media_kind === "photo" ? "Nova foto recebida" : "Novo vídeo recebido";
+  const displayTitle = cleanTitle(file.title || file.original_name || "Novo arquivo");
+  const body = `${displayTitle} • ${file.uploader_name || "Equipe de Mídia"}`;
+  const data = JSON.stringify({
+    title,
+    body,
+    icon: "./assets/icon-192.png",
+    badge: "./assets/icon-192.png",
+    tag: `media-${file.id}`,
+    url: `./#filesSection`,
+    fileId: file.id,
+    kind,
+    category: file.category || "outro"
+  });
+
+  const vapid = {
+    subject: env.VAPID_SUBJECT || "https://ad-central-midia-api.adpdc.workers.dev",
+    publicKey: env.VAPID_PUBLIC_KEY,
+    privateKey: env.VAPID_PRIVATE_KEY
+  };
+
+  await Promise.allSettled(subscriptions.map(async (sub) => {
+    try {
+      const payload = await buildPushPayload({ data, options: { ttl: 300 } }, {
+        endpoint: sub.endpoint,
+        expirationTime: null,
+        keys: { p256dh: sub.p256dh, auth: sub.auth }
+      }, vapid);
+      const response = await fetch(sub.endpoint, payload);
+      if (response.status === 404 || response.status === 410) {
+        await db(env, "media_push_subscriptions", {
+          method: "PATCH",
+          query: `id=eq.${encodeURIComponent(sub.id)}`,
+          body: { active: false, updated_at: new Date().toISOString() },
+          prefer: "return=minimal"
+        });
+      } else if (!response.ok) {
+        console.warn("Push endpoint", response.status, await response.text().catch(() => ""));
+      }
+    } catch (error) {
+      console.warn("Push send failed", sub.id, error);
+    }
+  }));
 }
 
 async function handleDownloadToken(request, env, user, fileId, cors) {
